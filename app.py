@@ -53,19 +53,31 @@ st.markdown("""
     }
     .stCaptionContainer { color: #aaaaaa !important; }
     
-    /* Odds card styling */
-    .odds-card {
-        background-color: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin-bottom: 16px;
+    /* White rounded outline around each odds card */
+    .odds-card-box {
+        border: 1.5px solid #ffffff;
+        border-radius: 12px;
+        padding: 16px 18px 12px 18px;
+        margin-bottom: 18px;
+        background-color: #141414;
     }
-    .odds-header {
-        font-size: 0.75rem;
-        color: #888;
-        letter-spacing: 0.5px;
-        margin-bottom: 8px;
+    
+    /* Make expander (Dive deeper) stand out in brand red */
+    div[data-testid="stExpander"] {
+        border: 1.5px solid #e10600 !important;
+        border-radius: 10px !important;
+        background-color: rgba(225, 6, 0, 0.12) !important;
+        margin-top: 8px;
+    }
+    div[data-testid="stExpander"] summary,
+    div[data-testid="stExpander"] summary span,
+    div[data-testid="stExpander"] summary p {
+        color: #ff4d4d !important;
+        font-weight: 600 !important;
+    }
+    div[data-testid="stExpander"] svg {
+        fill: #e10600 !important;
+        color: #e10600 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -109,15 +121,10 @@ def fetch_nfl_odds(api_key):
         return None, str(e)
 
 def extract_book_odds(game, book_key=None):
-    """
-    Extract clean Away-on-top / Home-on-bottom odds for one book.
-    Returns dict with spread, total, ml for away & home.
-    """
     home = game.get("home_team", "")
     away = game.get("away_team", "")
     books = game.get("bookmakers", [])
     
-    # Prefer requested book, else first available
     selected = None
     if book_key:
         for b in books:
@@ -169,7 +176,6 @@ def extract_book_odds(game, book_key=None):
     return result
 
 def short_name(full):
-    """Simple abbreviation helper."""
     mapping = {
         "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
         "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI",
@@ -186,7 +192,6 @@ def short_name(full):
     return mapping.get(full, full[:3].upper())
 
 def render_odds_card(odds, show_trends_button=True):
-    """Render a clean Away-top / Home-bottom odds card."""
     if not odds:
         st.caption("No odds available.")
         return
@@ -194,9 +199,12 @@ def render_odds_card(odds, show_trends_button=True):
     away_abbr = short_name(odds["away"])
     home_abbr = short_name(odds["home"])
     
+    # White rounded outline container
+    st.markdown('<div class="odds-card-box">', unsafe_allow_html=True)
+    
     # Header row
     h1, h2, h3, h4 = st.columns([3, 2, 2, 2])
-    h1.caption("")
+    h1.caption("TEAM")
     h2.caption("SPREAD")
     h3.caption("TOTAL")
     h4.caption("WINNER")
@@ -215,8 +223,10 @@ def render_odds_card(odds, show_trends_button=True):
     b3.markdown(f"**U {odds['total']}**  \n{odds['under_odds']}")
     b4.markdown(f"**{odds['home_ml']}**")
     
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     if show_trends_button:
-        with st.expander("Dive deeper — Analytical trends for this matchup"):
+        with st.expander("🔍 Dive deeper — Analytical trends for this matchup"):
             st.markdown(f"### {odds['away']} @ {odds['home']}")
             st.write("""
             **Quick analytical angles (research only):**
@@ -236,7 +246,6 @@ odds_data, odds_error = (None, None)
 if api_key:
     odds_data, odds_error = fetch_nfl_odds(api_key)
 
-# Available books for dropdown
 BOOK_OPTIONS = {
     "DraftKings": "draftkings",
     "FanDuel": "fanduel",
@@ -290,7 +299,6 @@ with tab1:
     elif odds_error:
         st.error(odds_error)
     else:
-        # Find HOF game
         target = None
         if odds_data:
             for g in odds_data:
@@ -305,7 +313,7 @@ with tab1:
             st.info("HOF Game odds not currently returned by the API. Check the Live Odds tab.")
 
 # =====================================================
-# TAB 2: LIVE ODDS (ALL GAMES)
+# TAB 2: LIVE ODDS
 # =====================================================
 with tab2:
     st.header("Live Odds — All Upcoming Games")
@@ -334,7 +342,6 @@ with tab2:
             st.caption(time_str)
             odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice2))
             render_odds_card(odds)
-            st.markdown("---")
 
 # =====================================================
 # TAB 3: PRESEASON
@@ -354,7 +361,7 @@ with tab3:
                 break
     
     st.markdown("---")
-    st.subheader("Other Upcoming Preseason Games")
+    st.subheader("Other Upcoming Games")
     if odds_data:
         for g in odds_data:
             teams = (g.get("home_team", "") + g.get("away_team", "")).lower()
@@ -372,7 +379,7 @@ with tab3:
 # TAB 4: REGULAR SEASON
 # =====================================================
 with tab4:
-    st.header("Regular Season — Week 1 Highlights + Odds")
+    st.header("Regular Season + Odds")
     book_choice4 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="reg_book")
     
     if odds_data:
@@ -383,7 +390,7 @@ with tab4:
             odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice4))
             render_odds_card(odds)
     else:
-        st.info("Regular season lines usually appear closer to September. Current API results will show here automatically.")
+        st.info("Regular season lines will appear here once posted by the books.")
 
 # =====================================================
 # TAB 5: TRENDS
@@ -423,4 +430,4 @@ with tab6:
     """)
 
 st.markdown("---")
-st.caption("FADE MACHINE • Away always on top • Home on bottom • Dive deeper for trends")
+st.caption("FADE MACHINE • White outlined odds cards • Red Dive deeper • Analytical tool only")
