@@ -34,10 +34,6 @@ st.markdown("""
         border-radius: 6px;
         border-left: 3px solid #e10600;
     }
-    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; color: #aaaaaa !important; }
-    [data-testid="stMetricValue"] { font-size: 1.0rem !important; color: #ffffff !important; }
-    
-    .stDataFrame, [data-testid="stDataFrame"] { font-size: 0.80rem !important; }
     
     .stTabs [data-baseweb="tab-list"] { background-color: #1a1a1a; gap: 6px; }
     .stTabs [data-baseweb="tab"] { color: #cccccc !important; }
@@ -49,25 +45,16 @@ st.markdown("""
         background-color: #e10600 !important;
         color: #ffffff !important;
         border: none;
-        font-size: 0.85rem;
     }
     .stCaptionContainer { color: #aaaaaa !important; }
     
-    /* White rounded outline around each odds card */
-    .odds-card-box {
-        border: 1.5px solid #ffffff;
-        border-radius: 12px;
-        padding: 16px 18px 12px 18px;
-        margin-bottom: 18px;
-        background-color: #141414;
-    }
-    
-    /* Make expander (Dive deeper) stand out in brand red */
+    /* Red branded Dive deeper expander */
     div[data-testid="stExpander"] {
         border: 1.5px solid #e10600 !important;
         border-radius: 10px !important;
         background-color: rgba(225, 6, 0, 0.12) !important;
-        margin-top: 8px;
+        margin-top: 6px;
+        margin-bottom: 18px;
     }
     div[data-testid="stExpander"] summary,
     div[data-testid="stExpander"] summary span,
@@ -77,7 +64,6 @@ st.markdown("""
     }
     div[data-testid="stExpander"] svg {
         fill: #e10600 !important;
-        color: #e10600 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -192,6 +178,7 @@ def short_name(full):
     return mapping.get(full, full[:3].upper())
 
 def render_odds_card(odds, show_trends_button=True):
+    """Render a complete odds card as one HTML block so the white border wraps everything."""
     if not odds:
         st.caption("No odds available.")
         return
@@ -199,31 +186,64 @@ def render_odds_card(odds, show_trends_button=True):
     away_abbr = short_name(odds["away"])
     home_abbr = short_name(odds["home"])
     
-    # White rounded outline container
-    st.markdown('<div class="odds-card-box">', unsafe_allow_html=True)
-    
-    # Header row
-    h1, h2, h3, h4 = st.columns([3, 2, 2, 2])
-    h1.caption("TEAM")
-    h2.caption("SPREAD")
-    h3.caption("TOTAL")
-    h4.caption("WINNER")
-    
-    # Away row (always top)
-    a1, a2, a3, a4 = st.columns([3, 2, 2, 2])
-    a1.markdown(f"**{away_abbr}**  \n{odds['away']}")
-    a2.markdown(f"**{odds['away_spread']}**  \n{odds['away_spread_odds']}")
-    a3.markdown(f"**O {odds['total']}**  \n{odds['over_odds']}")
-    a4.markdown(f"**{odds['away_ml']}**")
-    
-    # Home row (always bottom)
-    b1, b2, b3, b4 = st.columns([3, 2, 2, 2])
-    b1.markdown(f"**{home_abbr}**  \n{odds['home']}")
-    b2.markdown(f"**{odds['home_spread']}**  \n{odds['home_spread_odds']}")
-    b3.markdown(f"**U {odds['total']}**  \n{odds['under_odds']}")
-    b4.markdown(f"**{odds['home_ml']}**")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Build the full card in pure HTML so the border truly surrounds the content
+    html = f"""
+    <div style="
+        border: 1.5px solid #ffffff;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 8px;
+        background-color: #141414;
+        font-family: sans-serif;
+    ">
+        <!-- Header -->
+        <div style="display: flex; margin-bottom: 10px; color: #888; font-size: 0.72rem; letter-spacing: 0.4px;">
+            <div style="flex: 3;">TEAM</div>
+            <div style="flex: 2; text-align: center;">SPREAD</div>
+            <div style="flex: 2; text-align: center;">TOTAL</div>
+            <div style="flex: 2; text-align: center;">WINNER</div>
+        </div>
+        
+        <!-- Away row (always top) -->
+        <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <div style="flex: 3;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{away_abbr}</div>
+                <div style="font-size: 0.78rem; color: #aaa;">{odds['away']}</div>
+            </div>
+            <div style="flex: 2; text-align: center;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['away_spread']}</div>
+                <div style="font-size: 0.78rem; color: #aaa;">{odds['away_spread_odds']}</div>
+            </div>
+            <div style="flex: 2; text-align: center;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">O {odds['total']}</div>
+                <div style="font-size: 0.78rem; color: #aaa;">{odds['over_odds']}</div>
+            </div>
+            <div style="flex: 2; text-align: center;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['away_ml']}</div>
+            </div>
+        </div>
+        
+        <!-- Home row (always bottom) -->
+        <div style="display: flex; align-items: center;">
+            <div style="flex: 3;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{home_abbr}</div>
+                <div style="font-size: 0.78rem; color: #aaa;">{odds['home']}</div>
+            </div>
+            <div style="flex: 2; text-align: center;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['home_spread']}</div>
+                <div style="font-size: 0.78rem; color: #aaa;">{odds['home_spread_odds']}</div>
+            </div>
+            <div style="flex: 2; text-align: center;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">U {odds['total']}</div>
+                <div style="font-size: 0.78rem; color: #aaa;">{odds['under_odds']}</div>
+            </div>
+            <div style="flex: 2; text-align: center;">
+                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['home_ml']}</div>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
     
     if show_trends_button:
         with st.expander("🔍 Dive deeper — Analytical trends for this matchup"):
