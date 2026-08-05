@@ -64,7 +64,7 @@ st.sidebar.info("Analytical tool only — research & education.")
 st.sidebar.caption("Brand: Black • White • Grey • Red")
 
 # ------------------------------
-# HELPERS
+# ODDS HELPERS
 # -----------------------------
 def get_odds_api_key():
     try:
@@ -72,9 +72,10 @@ def get_odds_api_key():
     except Exception:
         return None
 
+@st.cache_data(ttl=120)  # cache for 2 minutes
 def fetch_nfl_odds(api_key):
     if not api_key:
-        return None, "No API key found in secrets."
+        return None, "No API key found."
     
     url = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
     params = {
@@ -88,13 +89,12 @@ def fetch_nfl_odds(api_key):
     try:
         response = requests.get(url, params=params, timeout=12)
         if response.status_code != 200:
-            return None, f"API error: {response.status_code} – {response.text[:200]}"
+            return None, f"API error: {response.status_code}"
         return response.json(), None
     except Exception as e:
         return None, str(e)
 
 def parse_game_odds(game):
-    """Parse one game into a clean per-book dataframe."""
     home = game.get("home_team", "")
     away = game.get("away_team", "")
     commence = game.get("commence_time", "")
@@ -121,14 +121,12 @@ def parse_game_odds(game):
                         spread_away = f"{point} ({price})"
                     elif o.get("name") == home:
                         spread_home = f"{point} ({price})"
-            
             elif key == "h2h":
                 for o in outcomes:
                     if o.get("name") == away:
                         ml_away = o.get("price", "—")
                     elif o.get("name") == home:
                         ml_home = o.get("price", "—")
-            
             elif key == "totals":
                 for o in outcomes:
                     if o.get("name") == "Over":
@@ -152,8 +150,37 @@ def parse_game_odds(game):
         "away": away,
         "home": home,
         "time": time_str,
-        "odds_df": pd.DataFrame(rows)
+        "odds_df": pd.DataFrame(rows),
+        "raw": game
     }
+
+def find_game(odds_data, team1, team2):
+    """Find a game that matches two team names (partial match)."""
+    if not odds_data:
+        return None
+    t1 = team1.lower()
+    t2 = team2.lower()
+    for g in odds_data:
+        home = g.get("home_team", "").lower()
+        away = g.get("away_team", "").lower()
+        if (t1 in home or t1 in away) and (t2 in home or t2 in away):
+            return parse_game_odds(g)
+    return None
+
+def show_odds_for_game(parsed, compact=False):
+    """Display odds table for one parsed game."""
+    if parsed is None or parsed["odds_df"].empty:
+        st.caption("No live odds available for this game yet.")
+        return
+    st.dataframe(parsed["odds_df"], use_container_width=True, hide_index=True)
+
+# ------------------------------
+# FETCH ODDS ONCE (shared across tabs)
+# -----------------------------
+api_key = get_odds_api_key()
+odds_data, odds_error = (None, None)
+if api_key:
+    odds_data, odds_error = fetch_nfl_odds(api_key)
 
 # ------------------------------
 # TITLE
@@ -174,7 +201,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 ])
 
 # =====================================================
-# TAB 1: HOF GAME
+# TAB 1: HOF GAME + LIVE ODDS
 # =====================================================
 with tab1:
     st.header("Hall of Fame Game")
@@ -191,86 +218,92 @@ with tab1:
         st.caption("Home • Carson Beck (R) expected")
     
     st.markdown("---")
-    st.info("Live odds for this game (and others) are on the **Live Odds** tab.")
-
-# =====================================================
-# TAB 2: LIVE ODDS — GROUPED BY GAME
-# =====================================================
-with tab2:
-    st.header("Live Odds — Grouped by Game")
-    st.caption("Each upcoming game is shown individually with odds from multiple books.")
-    
-    api_key = get_odds_api_key()
+    st.subheader("Live Odds for this game")
     
     if not api_key:
-        st.warning("⚠️ No ODDS_API_KEY found in Streamlit Secrets.")
-        st.markdown("""
-        Add this in **Settings → Secrets**:
-        ```toml
-        ODDS_API_KEY = "your-key-here"
-        ```
-        """)
+        st.warning("Add your ODDS_API_KEY in Streamlit Secrets to see live odds here.")
+    elif odds_error:
+        st.error(f"Odds fetch error: {odds_error}")
     else:
-        with st.spinner("Pulling live NFL odds..."):
-            data, error = fetch_nfl_odds(api_key)
-        
-        if error:
-            st.error(f"Could not fetch odds: {error}")
-        elif not data:
-            st.warning("No upcoming NFL games returned right now.")
+        hof = find_game(odds_data, "Panthers", "Cardinals")
+        if hof:
+            st.caption(hof["time"])
+            show_odds_for_game(hof)
         else:
-            st.success(f"Found {len(data)} upcoming game(s)")
-            
-            for game in data:
-                parsed = parse_game_odds(game)
-                
-                # Game header
-                st.markdown(f"### {parsed['away']}  @  {parsed['home']}")
-                st.caption(parsed["time"])
-                
-                # Odds table for this game only
-                if not parsed["odds_df"].empty:
-                    st.dataframe(
-                        parsed["odds_df"],
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                else:
-                    st.write("No book odds available for this game yet.")
-                
-                st.markdown("---")
-            
-            st.caption("Odds update when you refresh the page. American format. Data from The Odds API.")
+            st.info("Hall of Fame Game odds not returned by the API yet (or already started). Check the Live Odds tab for all available games.")
 
 # =====================================================
-# TAB 3: PRESEASON
+# TAB 2: FULL LIVE ODDS BOARD
+# =====================================================
+with tab2:
+    st.header("Live Odds — All Upcoming Games")
+    st.caption("Grouped by game • Data from The Odds API")
+    
+    if not api_key:
+        st.warning("⚠️ No ODDS_API_KEY found in secrets.")
+    elif odds_error:
+        st.error(f"Could not fetch odds: {odds_error}")
+    elif not odds_data:
+        st.warning("No upcoming NFL games returned right now.")
+    else:
+        st.success(f"Found {len(odds_data)} upcoming game(s)")
+        for game in odds_data:
+            parsed = parse_game_odds(game)
+            st.markdown(f"### {parsed['away']}  @  {parsed['home']}")
+            st.caption(parsed["time"])
+            show_odds_for_game(parsed)
+            st.markdown("---")
+        st.caption("Odds refresh roughly every 2 minutes when you reload the page.")
+
+# =====================================================
+# TAB 3: PRESEASON + ODDS WHERE AVAILABLE
 # =====================================================
 with tab3:
-    st.header("2026 Preseason Schedule")
-    st.subheader("Hall of Fame Game")
-    st.dataframe(pd.DataFrame([
-        {"Date": "Thu Aug 6", "Matchup": "Carolina Panthers @ Arizona Cardinals", "Time": "8:00 PM ET", "TV": "NBC / Peacock"}
-    ]), use_container_width=True, hide_index=True)
+    st.header("2026 Preseason Schedule + Odds")
     
+    st.subheader("Hall of Fame Game")
+    st.write("**Carolina Panthers @ Arizona Cardinals** — Thu Aug 6 • 8:00 PM ET")
+    hof = find_game(odds_data, "Panthers", "Cardinals") if odds_data else None
+    show_odds_for_game(hof)
+    
+    st.markdown("---")
     st.subheader("Preseason Week 1 (Aug 13–15)")
-    st.dataframe(pd.DataFrame([
-        {"Date": "Thu Aug 13", "Away": "Detroit Lions", "Home": "Cincinnati Bengals", "Time": "7:00 PM"},
-        {"Date": "Thu Aug 13", "Away": "Green Bay Packers", "Home": "Pittsburgh Steelers", "Time": "7:00 PM"},
-        {"Date": "Thu Aug 13", "Away": "Arizona Cardinals", "Home": "Las Vegas Raiders", "Time": "8:00 PM"},
-        {"Date": "Sat Aug 15", "Away": "Carolina Panthers", "Home": "Buffalo Bills", "Time": "1:00 PM"},
-        {"Date": "Sat Aug 15", "Away": "Dallas Cowboys", "Home": "Seattle Seahawks", "Time": "8:00 PM"},
-    ]), use_container_width=True, hide_index=True)
+    
+    preseason_games = [
+        ("Lions", "Bengals", "Detroit Lions @ Cincinnati Bengals", "Thu Aug 13 • 7:00 PM"),
+        ("Packers", "Steelers", "Green Bay Packers @ Pittsburgh Steelers", "Thu Aug 13 • 7:00 PM"),
+        ("Cardinals", "Raiders", "Arizona Cardinals @ Las Vegas Raiders", "Thu Aug 13 • 8:00 PM"),
+        ("Panthers", "Bills", "Carolina Panthers @ Buffalo Bills", "Sat Aug 15 • 1:00 PM"),
+        ("Cowboys", "Seahawks", "Dallas Cowboys @ Seattle Seahawks", "Sat Aug 15 • 8:00 PM"),
+    ]
+    
+    for t1, t2, label, time_label in preseason_games:
+        st.markdown(f"**{label}**")
+        st.caption(time_label)
+        match = find_game(odds_data, t1, t2) if odds_data else None
+        show_odds_for_game(match)
+        st.markdown("")
 
 # =====================================================
-# TAB 4: REGULAR SEASON
+# TAB 4: REGULAR SEASON + ODDS WHERE AVAILABLE
 # =====================================================
 with tab4:
-    st.header("2026 Regular Season — Week 1 Highlights")
-    st.dataframe(pd.DataFrame([
-        {"Date": "Wed Sep 9", "Matchup": "New England @ Seattle", "Time": "8:20 PM", "Note": "Kickoff Game"},
-        {"Date": "Thu Sep 10", "Matchup": "49ers vs Rams (Melbourne)", "Time": "8:35 PM", "Note": "Australia"},
-        {"Date": "Mon Sep 14", "Matchup": "Denver @ Kansas City", "Time": "8:15 PM", "Note": "MNF"},
-    ]), use_container_width=True, hide_index=True)
+    st.header("2026 Regular Season — Week 1 + Odds")
+    
+    reg_games = [
+        ("Patriots", "Seahawks", "New England Patriots @ Seattle Seahawks", "Wed Sep 9 • 8:20 PM • Kickoff Game"),
+        ("49ers", "Rams", "San Francisco 49ers vs Los Angeles Rams (Melbourne)", "Thu Sep 10 • 8:35 PM"),
+        ("Broncos", "Chiefs", "Denver Broncos @ Kansas City Chiefs", "Mon Sep 14 • 8:15 PM • MNF"),
+    ]
+    
+    for t1, t2, label, time_label in reg_games:
+        st.markdown(f"**{label}**")
+        st.caption(time_label)
+        match = find_game(odds_data, t1, t2) if odds_data else None
+        show_odds_for_game(match)
+        st.markdown("")
+    
+    st.info("More regular-season games will appear here automatically once books post lines and the API returns them.")
 
 # =====================================================
 # TAB 5: TRENDS
@@ -284,6 +317,11 @@ with tab5:
     """)
     st.success("Research lean: Cardinals +1.5 (preseason = high variance)")
     st.caption("For analysis only. Not a betting recommendation.")
+    
+    st.markdown("---")
+    st.subheader("Current HOF Odds (quick view)")
+    hof = find_game(odds_data, "Panthers", "Cardinals") if odds_data else None
+    show_odds_for_game(hof)
 
 # =====================================================
 # TAB 6: HEADLINES
