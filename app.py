@@ -3,9 +3,6 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# ------------------------------
-# PAGE CONFIG & BRANDING
-# -----------------------------
 st.set_page_config(
     page_title="FADE MACHINE | NFL Analytics",
     page_icon="🎯",
@@ -27,13 +24,6 @@ st.markdown("""
     h1, h2, h3, h4, h5, h6 { color: #ffffff !important; }
     [data-testid="stSidebar"] { background-color: #1a1a1a !important; }
     [data-testid="stSidebar"] * { color: #ffffff !important; }
-    
-    [data-testid="stMetric"] {
-        background-color: #1f1f1f !important;
-        padding: 8px;
-        border-radius: 6px;
-        border-left: 3px solid #e10600;
-    }
     
     .stTabs [data-baseweb="tab-list"] { background-color: #1a1a1a; gap: 6px; }
     .stTabs [data-baseweb="tab"] { color: #cccccc !important; }
@@ -68,18 +58,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------------------
-# SIDEBAR
-# -----------------------------
 st.sidebar.markdown("# 🎯 FADE MACHINE")
 st.sidebar.markdown("**NFL Analytics | Live Odds**")
 st.sidebar.markdown("---")
 st.sidebar.info("Analytical tool only — research & education.")
 st.sidebar.caption("Brand: Black • White • Grey • Red")
 
-# ------------------------------
-# ODDS HELPERS
-# -----------------------------
 def get_odds_api_key():
     try:
         return st.secrets["ODDS_API_KEY"]
@@ -178,7 +162,6 @@ def short_name(full):
     return mapping.get(full, full[:3].upper())
 
 def render_odds_card(odds, show_trends_button=True):
-    """Render a complete odds card as one HTML block so the white border wraps everything."""
     if not odds:
         st.caption("No odds available.")
         return
@@ -186,68 +169,68 @@ def render_odds_card(odds, show_trends_button=True):
     away_abbr = short_name(odds["away"])
     home_abbr = short_name(odds["home"])
     
-    # Build the full card in pure HTML so the border truly surrounds the content
-    html = f"""
-    <div style="
-        border: 1.5px solid #ffffff;
-        border-radius: 12px;
-        padding: 14px 16px;
-        margin-bottom: 8px;
-        background-color: #141414;
-        font-family: sans-serif;
-    ">
-        <!-- Header -->
-        <div style="display: flex; margin-bottom: 10px; color: #888; font-size: 0.72rem; letter-spacing: 0.4px;">
-            <div style="flex: 3;">TEAM</div>
-            <div style="flex: 2; text-align: center;">SPREAD</div>
-            <div style="flex: 2; text-align: center;">TOTAL</div>
-            <div style="flex: 2; text-align: center;">WINNER</div>
-        </div>
-        
-        <!-- Away row (always top) -->
-        <div style="display: flex; align-items: center; margin-bottom: 12px;">
-            <div style="flex: 3;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{away_abbr}</div>
-                <div style="font-size: 0.78rem; color: #aaa;">{odds['away']}</div>
-            </div>
-            <div style="flex: 2; text-align: center;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['away_spread']}</div>
-                <div style="font-size: 0.78rem; color: #aaa;">{odds['away_spread_odds']}</div>
-            </div>
-            <div style="flex: 2; text-align: center;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">O {odds['total']}</div>
-                <div style="font-size: 0.78rem; color: #aaa;">{odds['over_odds']}</div>
-            </div>
-            <div style="flex: 2; text-align: center;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['away_ml']}</div>
-            </div>
-        </div>
-        
-        <!-- Home row (always bottom) -->
-        <div style="display: flex; align-items: center;">
-            <div style="flex: 3;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{home_abbr}</div>
-                <div style="font-size: 0.78rem; color: #aaa;">{odds['home']}</div>
-            </div>
-            <div style="flex: 2; text-align: center;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['home_spread']}</div>
-                <div style="font-size: 0.78rem; color: #aaa;">{odds['home_spread_odds']}</div>
-            </div>
-            <div style="flex: 2; text-align: center;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">U {odds['total']}</div>
-                <div style="font-size: 0.78rem; color: #aaa;">{odds['under_odds']}</div>
-            </div>
-            <div style="flex: 2; text-align: center;">
-                <div style="font-weight: 700; font-size: 1.05rem; color: #fff;">{odds['home_ml']}</div>
-            </div>
-        </div>
+    away_spread = odds["away_spread"]
+    away_spread_odds = odds["away_spread_odds"]
+    home_spread = odds["home_spread"]
+    home_spread_odds = odds["home_spread_odds"]
+    total = odds["total"]
+    over_odds = odds["over_odds"]
+    under_odds = odds["under_odds"]
+    away_ml = odds["away_ml"]
+    home_ml = odds["home_ml"]
+    away_name = odds["away"]
+    home_name = odds["home"]
+    
+    # Clean HTML card - no comments, simple structure
+    card_html = f'''
+<div style="border:1.5px solid #ffffff; border-radius:12px; padding:16px 18px; margin-bottom:8px; background-color:#141414;">
+  <div style="display:flex; margin-bottom:12px; color:#888; font-size:0.72rem; letter-spacing:0.4px;">
+    <div style="flex:3;">TEAM</div>
+    <div style="flex:2; text-align:center;">SPREAD</div>
+    <div style="flex:2; text-align:center;">TOTAL</div>
+    <div style="flex:2; text-align:center;">WINNER</div>
+  </div>
+  <div style="display:flex; align-items:center; margin-bottom:14px;">
+    <div style="flex:3;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">{away_abbr}</div>
+      <div style="font-size:0.78rem; color:#aaaaaa;">{away_name}</div>
     </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+    <div style="flex:2; text-align:center;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">{away_spread}</div>
+      <div style="font-size:0.78rem; color:#aaaaaa;">{away_spread_odds}</div>
+    </div>
+    <div style="flex:2; text-align:center;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">O {total}</div>
+      <div style="font-size:0.78rem; color:#aaaaaa;">{over_odds}</div>
+    </div>
+    <div style="flex:2; text-align:center;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">{away_ml}</div>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center;">
+    <div style="flex:3;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">{home_abbr}</div>
+      <div style="font-size:0.78rem; color:#aaaaaa;">{home_name}</div>
+    </div>
+    <div style="flex:2; text-align:center;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">{home_spread}</div>
+      <div style="font-size:0.78rem; color:#aaaaaa;">{home_spread_odds}</div>
+    </div>
+    <div style="flex:2; text-align:center;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">U {total}</div>
+      <div style="font-size:0.78rem; color:#aaaaaa;">{under_odds}</div>
+    </div>
+    <div style="flex:2; text-align:center;">
+      <div style="font-weight:700; font-size:1.05rem; color:#ffffff;">{home_ml}</div>
+    </div>
+  </div>
+</div>
+'''
+    st.markdown(card_html, unsafe_allow_html=True)
     
     if show_trends_button:
         with st.expander("🔍 Dive deeper — Analytical trends for this matchup"):
-            st.markdown(f"### {odds['away']} @ {odds['home']}")
+            st.markdown(f"### {away_name} @ {home_name}")
             st.write("""
             **Quick analytical angles (research only):**
             - Compare recent ATS records of both teams
@@ -258,9 +241,6 @@ def render_odds_card(odds, show_trends_button=True):
             """)
             st.caption("Full historical ATS database and deeper models will be expanded in future updates.")
 
-# ------------------------------
-# FETCH ODDS
-# -----------------------------
 api_key = get_odds_api_key()
 odds_data, odds_error = (None, None)
 if api_key:
@@ -274,15 +254,9 @@ BOOK_OPTIONS = {
     "Bovada": "bovada"
 }
 
-# ------------------------------
-# TITLE
-# -----------------------------
 st.title("🎯 FADE MACHINE")
 st.caption("NFL Historical Trends • Live Odds • Schedule")
 
-# =====================================================
-# TABS
-# =====================================================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔴 HOF Game",
     "📈 Live Odds",
@@ -292,9 +266,6 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📰 Headlines"
 ])
 
-# =====================================================
-# TAB 1: HOF GAME
-# =====================================================
 with tab1:
     st.header("Hall of Fame Game")
     st.markdown("**Thu Aug 6, 2026 • 8:00 PM ET • NBC / Peacock • Canton, OH**")
@@ -332,9 +303,6 @@ with tab1:
         else:
             st.info("HOF Game odds not currently returned by the API. Check the Live Odds tab.")
 
-# =====================================================
-# TAB 2: LIVE ODDS
-# =====================================================
 with tab2:
     st.header("Live Odds — All Upcoming Games")
     
@@ -363,9 +331,6 @@ with tab2:
             odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice2))
             render_odds_card(odds)
 
-# =====================================================
-# TAB 3: PRESEASON
-# =====================================================
 with tab3:
     st.header("Preseason + Odds")
     book_choice3 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="pre_book")
@@ -395,9 +360,6 @@ with tab3:
     else:
         st.caption("Live odds will appear here when available.")
 
-# =====================================================
-# TAB 4: REGULAR SEASON
-# =====================================================
 with tab4:
     st.header("Regular Season + Odds")
     book_choice4 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="reg_book")
@@ -412,9 +374,6 @@ with tab4:
     else:
         st.info("Regular season lines will appear here once posted by the books.")
 
-# =====================================================
-# TAB 5: TRENDS
-# =====================================================
 with tab5:
     st.header("HOF Game Trends & Deeper Analysis")
     st.write("""
@@ -437,9 +396,6 @@ with tab5:
                 render_odds_card(odds, show_trends_button=False)
                 break
 
-# =====================================================
-# TAB 6: HEADLINES
-# =====================================================
 with tab6:
     st.header("Preseason Headlines")
     st.write("""
