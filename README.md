@@ -1,74 +1,56 @@
 # FADE MACHINE
 
-Sports betting **analytics** tool powered by historical data and trends for moneylines, spreads, totals, and player props.
+Sports analytics tool focused on historical trends for moneylines, spreads, totals, and player props.
 
-**Current phase:** Pure analytical tool (no real-money betting or prediction markets yet).
-
----
-
-## What this project is
-
-FADE MACHINE helps users explore historical sports trends and simple model-based insights.  
-We are starting extremely small and building with heavy help from AI coding tools.
-
-### First goal (MVP)
-- One sport (we will start with NFL)
-- Focus on spreads (Against The Spread / ATS)
-- Show historical trends
-- Simple probability estimates
-- Clean web interface
+**Current Phase:** Pure analytical tool (no real-money features yet)
 
 ---
 
-## How we are building this (Beginner + AI approach)
+## Current Focus: NFL Against The Spread (ATS)
 
-You do **not** need to be an experienced programmer.  
-We will use AI coding agents (Cursor, Claude, Grok, etc.) to write most of the code.
-
-### Recommended tools
-- **Streamlit** → Makes it easy to build web apps with Python
-- **Python** → Best language for data and sports analytics
-- **GitHub** → Where this code lives
+This version includes:
+- Sample NFL ATS data for 12 teams
+- Filters for teams and season
+- Key performance metrics
+- Sorted ATS win percentage table
+- Quick insights (strongest / weakest ATS teams)
 
 ---
 
-## Getting started (for you)
+## How to Run the App
 
-1. Make sure you have Python installed on your computer (ask AI how to install it if needed).
-2. Clone this repository or download the files.
-3. Create a virtual environment and install requirements:
+1. Open a terminal in the project folder
+2. Install packages (only needed once):
    ```bash
    pip install -r requirements.txt
    ```
-4. Run the app locally:
+3. Start the app:
    ```bash
-   streamlit run app.py
+   python -m streamlit run app.py
    ```
-5. Open the link that appears in your browser.
+4. Open the local URL that appears (usually http://localhost:8501)
 
 ---
 
-## Current files
+## Next Development Steps
 
-- `app.py` → The main Streamlit application (very basic starter)
-- `requirements.txt` → List of Python packages needed
-- `README.md` → This file
-
----
-
-## Next steps with AI
-
-Copy and paste prompts like these into your AI coding tool:
-
-**Prompt example 1:**
-"I am a complete beginner. Look at the current app.py in this FADE MACHINE project. Improve it so it has a clean title, a short description, and a simple sidebar. Keep everything beginner-friendly and explain what you changed."
-
-**Prompt example 2:**
-"Help me add a section that will later show historical NFL spread data. For now just create a placeholder with sample numbers."
-
-Always test what the AI gives you and ask it to explain the code in simple English.
+1. Replace sample data with real historical NFL ATS data
+2. Add more seasons and full team list
+3. Add home/away splits and situational trends
+4. Add simple probability / edge calculations
+5. Expand to totals, moneylines, and player props
 
 ---
 
-## Project owner
-GitHub: [FADEMACHINE](https://github.com/FADEMACHINE)
+## Working with AI
+
+You can improve this app by pasting prompts into AI coding tools (Cursor, Claude, ChatGPT, Grok, etc.).
+
+Always test changes by re-running:
+```bash
+python -m streamlit run app.py
+```
+
+---
+
+**Owner:** [FADEMACHINE](https://github.com/FADEMACHINE)
