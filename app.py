@@ -1,137 +1,286 @@
 import streamlit as st
 import pandas as pd
 
-# Page configuration
+# ------------------------------
+# PAGE CONFIG & BRANDING
+# Black, White, Grey, Red theme matching FADE MACHINE brand
+# -----------------------------
 st.set_page_config(
     page_title="FADE MACHINE | NFL ATS",
     page_icon="🎯",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# ------------------------------
-# SAMPLE NFL ATS DATA
-# This is temporary sample data so the app works immediately.
-# Later we will replace this with real historical data.
-# -----------------------------
-sample_data = {
-    "Team": [
-        "Kansas City Chiefs", "Buffalo Bills", "Detroit Lions", "Baltimore Ravens",
-        "San Francisco 49ers", "Dallas Cowboys", "Philadelphia Eagles", "Green Bay Packers",
-        "Miami Dolphins", "Cincinnati Bengals", "Houston Texans", "Los Angeles Rams"
-    ],
-    "Season": [2024] * 12,
-    "ATS_Wins": [11, 10, 12, 9, 8, 7, 10, 9, 6, 8, 9, 7],
-    "ATS_Losses": [6, 7, 5, 8, 9, 10, 7, 8, 11, 9, 8, 10],
-    "ATS_Win_Pct": [0.647, 0.588, 0.706, 0.529, 0.471, 0.412, 0.588, 0.529, 0.353, 0.471, 0.529, 0.412],
-    "Home_ATS_Wins": [6, 5, 7, 5, 4, 4, 6, 5, 3, 4, 5, 3],
-    "Away_ATS_Wins": [5, 5, 5, 4, 4, 3, 4, 4, 3, 4, 4, 4],
-    "Avg_Spread": [-5.5, -3.5, -2.5, -3.0, -4.0, -2.0, -3.5, -1.5, -1.0, -2.5, -1.5, -1.0]
-}
+# Custom CSS for Black / White / Grey / Red branding
+st.markdown("""
+<style>
+    /* Main background */
+    .stApp {
+        background-color: #0d0d0d;
+        color: #ffffff;
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #1a1a1a;
+    }
+    
+    /* Headers */
+    h1, h2, h3 {
+        color: #ffffff !important;
+    }
+    
+    /* Metric cards */
+    [data-testid="stMetric"] {
+        background-color: #1f1f1f;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #e10600;
+    }
+    
+    /* Dataframe */
+    .stDataFrame {
+        background-color: #1a1a1a;
+    }
+    
+    /* Buttons and highlights */
+    .stButton>button {
+        background-color: #e10600;
+        color: white;
+        border: none;
+    }
+    
+    /* Success / Error boxes */
+    .stSuccess {
+        background-color: #1a1a1a;
+        border-left: 4px solid #e10600;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-df = pd.DataFrame(sample_data)
+# ------------------------------
+# AFC TEAMS - SAMPLE HISTORICAL ATS DATA (Past 5 Seasons)
+# NOTE: This is realistic SAMPLE data for development.
+# Real historical data from APIs will replace this later.
+# Seasons: 2021, 2022, 2023, 2024, 2025
+# -----------------------------
+data = [
+    # Buffalo Bills
+    {"Team": "Buffalo Bills", "Conference": "AFC", "Division": "East", "Season": 2021, "ATS_Wins": 10, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Buffalo Bills", "Conference": "AFC", "Division": "East", "Season": 2022, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 1},
+    {"Team": "Buffalo Bills", "Conference": "AFC", "Division": "East", "Season": 2023, "ATS_Wins": 9, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Buffalo Bills", "Conference": "AFC", "Division": "East", "Season": 2024, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 1},
+    {"Team": "Buffalo Bills", "Conference": "AFC", "Division": "East", "Season": 2025, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    
+    # Miami Dolphins
+    {"Team": "Miami Dolphins", "Conference": "AFC", "Division": "East", "Season": 2021, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Miami Dolphins", "Conference": "AFC", "Division": "East", "Season": 2022, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 0},
+    {"Team": "Miami Dolphins", "Conference": "AFC", "Division": "East", "Season": 2023, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Miami Dolphins", "Conference": "AFC", "Division": "East", "Season": 2024, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Miami Dolphins", "Conference": "AFC", "Division": "East", "Season": 2025, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    
+    # New York Jets
+    {"Team": "New York Jets", "Conference": "AFC", "Division": "East", "Season": 2021, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "New York Jets", "Conference": "AFC", "Division": "East", "Season": 2022, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "New York Jets", "Conference": "AFC", "Division": "East", "Season": 2023, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "New York Jets", "Conference": "AFC", "Division": "East", "Season": 2024, "ATS_Wins": 5, "ATS_Losses": 12, "ATS_Pushes": 0},
+    {"Team": "New York Jets", "Conference": "AFC", "Division": "East", "Season": 2025, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    
+    # New England Patriots
+    {"Team": "New England Patriots", "Conference": "AFC", "Division": "East", "Season": 2021, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "New England Patriots", "Conference": "AFC", "Division": "East", "Season": 2022, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "New England Patriots", "Conference": "AFC", "Division": "East", "Season": 2023, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "New England Patriots", "Conference": "AFC", "Division": "East", "Season": 2024, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "New England Patriots", "Conference": "AFC", "Division": "East", "Season": 2025, "ATS_Wins": 11, "ATS_Losses": 6, "ATS_Pushes": 0},
+    
+    # Baltimore Ravens
+    {"Team": "Baltimore Ravens", "Conference": "AFC", "Division": "North", "Season": 2021, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Baltimore Ravens", "Conference": "AFC", "Division": "North", "Season": 2022, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Baltimore Ravens", "Conference": "AFC", "Division": "North", "Season": 2023, "ATS_Wins": 11, "ATS_Losses": 6, "ATS_Pushes": 1},
+    {"Team": "Baltimore Ravens", "Conference": "AFC", "Division": "North", "Season": 2024, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Baltimore Ravens", "Conference": "AFC", "Division": "North", "Season": 2025, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    
+    # Cincinnati Bengals
+    {"Team": "Cincinnati Bengals", "Conference": "AFC", "Division": "North", "Season": 2021, "ATS_Wins": 11, "ATS_Losses": 6, "ATS_Pushes": 1},
+    {"Team": "Cincinnati Bengals", "Conference": "AFC", "Division": "North", "Season": 2022, "ATS_Wins": 12, "ATS_Losses": 5, "ATS_Pushes": 0},
+    {"Team": "Cincinnati Bengals", "Conference": "AFC", "Division": "North", "Season": 2023, "ATS_Wins": 8, "ATS_Losses": 8, "ATS_Pushes": 1},
+    {"Team": "Cincinnati Bengals", "Conference": "AFC", "Division": "North", "Season": 2024, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 0},
+    {"Team": "Cincinnati Bengals", "Conference": "AFC", "Division": "North", "Season": 2025, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    
+    # Cleveland Browns
+    {"Team": "Cleveland Browns", "Conference": "AFC", "Division": "North", "Season": 2021, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Cleveland Browns", "Conference": "AFC", "Division": "North", "Season": 2022, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Cleveland Browns", "Conference": "AFC", "Division": "North", "Season": 2023, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Cleveland Browns", "Conference": "AFC", "Division": "North", "Season": 2024, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "Cleveland Browns", "Conference": "AFC", "Division": "North", "Season": 2025, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    
+    # Pittsburgh Steelers
+    {"Team": "Pittsburgh Steelers", "Conference": "AFC", "Division": "North", "Season": 2021, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Pittsburgh Steelers", "Conference": "AFC", "Division": "North", "Season": 2022, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 0},
+    {"Team": "Pittsburgh Steelers", "Conference": "AFC", "Division": "North", "Season": 2023, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Pittsburgh Steelers", "Conference": "AFC", "Division": "North", "Season": 2024, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 0},
+    {"Team": "Pittsburgh Steelers", "Conference": "AFC", "Division": "North", "Season": 2025, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    
+    # Houston Texans
+    {"Team": "Houston Texans", "Conference": "AFC", "Division": "South", "Season": 2021, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "Houston Texans", "Conference": "AFC", "Division": "South", "Season": 2022, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Houston Texans", "Conference": "AFC", "Division": "South", "Season": 2023, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 1},
+    {"Team": "Houston Texans", "Conference": "AFC", "Division": "South", "Season": 2024, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Houston Texans", "Conference": "AFC", "Division": "South", "Season": 2025, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    
+    # Indianapolis Colts
+    {"Team": "Indianapolis Colts", "Conference": "AFC", "Division": "South", "Season": 2021, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Indianapolis Colts", "Conference": "AFC", "Division": "South", "Season": 2022, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Indianapolis Colts", "Conference": "AFC", "Division": "South", "Season": 2023, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Indianapolis Colts", "Conference": "AFC", "Division": "South", "Season": 2024, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Indianapolis Colts", "Conference": "AFC", "Division": "South", "Season": 2025, "ATS_Wins": 9, "ATS_Losses": 7, "ATS_Pushes": 1},
+    
+    # Jacksonville Jaguars
+    {"Team": "Jacksonville Jaguars", "Conference": "AFC", "Division": "South", "Season": 2021, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "Jacksonville Jaguars", "Conference": "AFC", "Division": "South", "Season": 2022, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 0},
+    {"Team": "Jacksonville Jaguars", "Conference": "AFC", "Division": "South", "Season": 2023, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Jacksonville Jaguars", "Conference": "AFC", "Division": "South", "Season": 2024, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Jacksonville Jaguars", "Conference": "AFC", "Division": "South", "Season": 2025, "ATS_Wins": 12, "ATS_Losses": 4, "ATS_Pushes": 1},
+    
+    # Tennessee Titans
+    {"Team": "Tennessee Titans", "Conference": "AFC", "Division": "South", "Season": 2021, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Tennessee Titans", "Conference": "AFC", "Division": "South", "Season": 2022, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Tennessee Titans", "Conference": "AFC", "Division": "South", "Season": 2023, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "Tennessee Titans", "Conference": "AFC", "Division": "South", "Season": 2024, "ATS_Wins": 5, "ATS_Losses": 12, "ATS_Pushes": 0},
+    {"Team": "Tennessee Titans", "Conference": "AFC", "Division": "South", "Season": 2025, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    
+    # Kansas City Chiefs
+    {"Team": "Kansas City Chiefs", "Conference": "AFC", "Division": "West", "Season": 2021, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 1},
+    {"Team": "Kansas City Chiefs", "Conference": "AFC", "Division": "West", "Season": 2022, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 1},
+    {"Team": "Kansas City Chiefs", "Conference": "AFC", "Division": "West", "Season": 2023, "ATS_Wins": 9, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Kansas City Chiefs", "Conference": "AFC", "Division": "West", "Season": 2024, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 1},
+    {"Team": "Kansas City Chiefs", "Conference": "AFC", "Division": "West", "Season": 2025, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    
+    # Los Angeles Chargers
+    {"Team": "Los Angeles Chargers", "Conference": "AFC", "Division": "West", "Season": 2021, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Los Angeles Chargers", "Conference": "AFC", "Division": "West", "Season": 2022, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Los Angeles Chargers", "Conference": "AFC", "Division": "West", "Season": 2023, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Los Angeles Chargers", "Conference": "AFC", "Division": "West", "Season": 2024, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Los Angeles Chargers", "Conference": "AFC", "Division": "West", "Season": 2025, "ATS_Wins": 8, "ATS_Losses": 8, "ATS_Pushes": 1},
+    
+    # Las Vegas Raiders
+    {"Team": "Las Vegas Raiders", "Conference": "AFC", "Division": "West", "Season": 2021, "ATS_Wins": 9, "ATS_Losses": 8, "ATS_Pushes": 0},
+    {"Team": "Las Vegas Raiders", "Conference": "AFC", "Division": "West", "Season": 2022, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Las Vegas Raiders", "Conference": "AFC", "Division": "West", "Season": 2023, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Las Vegas Raiders", "Conference": "AFC", "Division": "West", "Season": 2024, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "Las Vegas Raiders", "Conference": "AFC", "Division": "West", "Season": 2025, "ATS_Wins": 6, "ATS_Losses": 10, "ATS_Pushes": 1},
+    
+    # Denver Broncos
+    {"Team": "Denver Broncos", "Conference": "AFC", "Division": "West", "Season": 2021, "ATS_Wins": 7, "ATS_Losses": 10, "ATS_Pushes": 0},
+    {"Team": "Denver Broncos", "Conference": "AFC", "Division": "West", "Season": 2022, "ATS_Wins": 6, "ATS_Losses": 11, "ATS_Pushes": 0},
+    {"Team": "Denver Broncos", "Conference": "AFC", "Division": "West", "Season": 2023, "ATS_Wins": 8, "ATS_Losses": 9, "ATS_Pushes": 0},
+    {"Team": "Denver Broncos", "Conference": "AFC", "Division": "West", "Season": 2024, "ATS_Wins": 10, "ATS_Losses": 7, "ATS_Pushes": 0},
+    {"Team": "Denver Broncos", "Conference": "AFC", "Division": "West", "Season": 2025, "ATS_Wins": 7, "ATS_Losses": 9, "ATS_Pushes": 1},
+]
+
+df = pd.DataFrame(data)
+df["ATS_Win_Pct"] = df["ATS_Wins"] / (df["ATS_Wins"] + df["ATS_Losses"])
 
 # ------------------------------
 # SIDEBAR
 # -----------------------------
-st.sidebar.title("FADE MACHINE")
-st.sidebar.markdown("**NFL Against The Spread Analytics**")
+st.sidebar.markdown("# 🎯 FADE MACHINE")
+st.sidebar.markdown("**NFL AFC | Against The Spread**")
 st.sidebar.markdown("---")
 
 st.sidebar.header("Filters")
-selected_season = st.sidebar.selectbox("Season", options=[2024, 2023, 2022], index=0)
-selected_teams = st.sidebar.multiselect(
-    "Select Teams",
-    options=df["Team"].tolist(),
-    default=df["Team"].tolist()[:6]
-)
+
+seasons = sorted(df["Season"].unique(), reverse=True)
+selected_seasons = st.sidebar.multiselect("Select Seasons", options=seasons, default=seasons)
+
+divisions = ["All"] + sorted(df["Division"].unique().tolist())
+selected_division = st.sidebar.selectbox("Division", options=divisions)
+
+teams = sorted(df["Team"].unique().tolist())
+selected_teams = st.sidebar.multiselect("Teams", options=teams, default=teams)
 
 st.sidebar.markdown("---")
-st.sidebar.info(
-    "This is sample data for demonstration.\n\n"
-    "Next we will connect real historical NFL ATS data."
-)
+st.sidebar.caption("Sample data for development • Real data coming soon")
+st.sidebar.caption("Brand colors: Black • White • Grey • Red")
 
 # ------------------------------
-# MAIN PAGE
+# FILTER DATA
 # -----------------------------
-st.title("🎯 FADE MACHINE")
-st.subheader("NFL Against The Spread (ATS) Analytics")
+filtered = df[
+    (df["Season"].isin(selected_seasons)) &
+    (df["Team"].isin(selected_teams))
+].copy()
+
+if selected_division != "All":
+    filtered = filtered[filtered["Division"] == selected_division]
+
+# ------------------------------
+# MAIN CONTENT
+# -----------------------------
+st.title("FADE MACHINE")
+st.subheader("AFC NFL Against The Spread Analytics")
+st.caption("Historical ATS performance • Past 5 seasons (Sample Data)")
 
 st.markdown("---")
 
-# Filter the data
-filtered_df = df[df["Team"].isin(selected_teams)].copy()
-
-# Key Metrics Row
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.metric("Teams Shown", len(filtered_df))
-
-with col2:
-    best_team = filtered_df.loc[filtered_df["ATS_Win_Pct"].idxmax(), "Team"] if not filtered_df.empty else "N/A"
-    st.metric("Best ATS Team", best_team)
-
-with col3:
-    avg_win_pct = filtered_df["ATS_Win_Pct"].mean() if not filtered_df.empty else 0
-    st.metric("Average ATS Win %", f"{avg_win_pct:.1%}")
-
-with col4:
-    total_games = filtered_df["ATS_Wins"].sum() + filtered_df["ATS_Losses"].sum()
-    st.metric("Total Games Tracked", int(total_games))
-
-st.markdown("---")
-
-# Main Data Table
-st.header("Team ATS Performance")
-
-if filtered_df.empty:
-    st.warning("No teams selected. Please select at least one team in the sidebar.")
+if filtered.empty:
+    st.warning("No data matches your filters. Please adjust the sidebar.")
 else:
-    # Format the dataframe for display
-    display_df = filtered_df[["Team", "ATS_Wins", "ATS_Losses", "ATS_Win_Pct", "Home_ATS_Wins", "Away_ATS_Wins", "Avg_Spread"]].copy()
-    display_df["ATS_Win_Pct"] = display_df["ATS_Win_Pct"].apply(lambda x: f"{x:.1%}")
-    display_df = display_df.rename(columns={
-        "ATS_Wins": "ATS Wins",
-        "ATS_Losses": "ATS Losses",
-        "ATS_Win_Pct": "ATS Win %",
-        "Home_ATS_Wins": "Home ATS Wins",
-        "Away_ATS_Wins": "Away ATS Wins",
-        "Avg_Spread": "Avg Spread"
+    # Aggregate by team across selected seasons
+    team_summary = filtered.groupby(["Team", "Division"]).agg({
+        "ATS_Wins": "sum",
+        "ATS_Losses": "sum",
+        "ATS_Pushes": "sum"
+    }).reset_index()
+    
+    team_summary["Total_Games"] = team_summary["ATS_Wins"] + team_summary["ATS_Losses"]
+    team_summary["ATS_Win_Pct"] = team_summary["ATS_Wins"] / team_summary["Total_Games"]
+    team_summary = team_summary.sort_values("ATS_Win_Pct", ascending=False)
+    
+    # Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Teams", len(team_summary))
+    with col2:
+        best = team_summary.iloc[0]["Team"] if not team_summary.empty else "N/A"
+        st.metric("Best ATS", best)
+    with col3:
+        avg_pct = team_summary["ATS_Win_Pct"].mean()
+        st.metric("Avg ATS %", f"{avg_pct:.1%}")
+    with col4:
+        total_games = team_summary["Total_Games"].sum()
+        st.metric("Games Tracked", int(total_games))
+    
+    st.markdown("---")
+    
+    # Main Table
+    st.header("AFC Team ATS Performance")
+    
+    display = team_summary[["Team", "Division", "ATS_Wins", "ATS_Losses", "ATS_Pushes", "ATS_Win_Pct"]].copy()
+    display["ATS_Win_Pct"] = display["ATS_Win_Pct"].apply(lambda x: f"{x:.1%}")
+    display = display.rename(columns={
+        "ATS_Wins": "Wins",
+        "ATS_Losses": "Losses",
+        "ATS_Pushes": "Pushes",
+        "ATS_Win_Pct": "Win %"
     })
-
-    st.dataframe(
-        display_df.sort_values("ATS Win %", ascending=False),
-        use_container_width=True,
-        hide_index=True
-    )
-
-st.markdown("---")
-
-# Simple Insight Section
-st.header("Quick Insights")
-
-if not filtered_df.empty:
-    top_team = filtered_df.loc[filtered_df["ATS_Win_Pct"].idxmax()]
-    bottom_team = filtered_df.loc[filtered_df["ATS_Win_Pct"].idxmin()]
-
+    
+    st.dataframe(display, use_container_width=True, hide_index=True)
+    
+    st.markdown("---")
+    
+    # Insights
+    st.header("Quick Insights")
     col_a, col_b = st.columns(2)
-
+    
     with col_a:
-        st.success(
-            f"**Strongest ATS Team**\n\n"
-            f"{top_team['Team']}  \n"
-            f"Record: {int(top_team['ATS_Wins'])}-{int(top_team['ATS_Losses'])}  \n"
-            f"Win Rate: {top_team['ATS_Win_Pct']:.1%}"
-        )
-
+        top = team_summary.iloc[0]
+        st.success(f"**Strongest ATS**\n\n{top['Team']}\n{int(top['ATS_Wins'])}-{int(top['ATS_Losses'])}-{int(top['ATS_Pushes'])}  |  {top['ATS_Win_Pct']:.1%}")
+    
     with col_b:
-        st.error(
-            f"**Weakest ATS Team**\n\n"
-            f"{bottom_team['Team']}  \n"
-            f"Record: {int(bottom_team['ATS_Wins'])}-{int(bottom_team['ATS_Losses'])}  \n"
-            f"Win Rate: {bottom_team['ATS_Win_Pct']:.1%}"
-        )
+        bottom = team_summary.iloc[-1]
+        st.error(f"**Weakest ATS**\n\n{bottom['Team']}\n{int(bottom['ATS_Wins'])}-{int(bottom['ATS_Losses'])}-{int(bottom['ATS_Pushes'])}  |  {bottom['ATS_Win_Pct']:.1%}")
 
 st.markdown("---")
-st.caption("FADE MACHINE • NFL ATS Analytics • Sample Data Only • Built with Streamlit")
+st.caption("FADE MACHINE  •  Black / White / Grey / Red  •  AFC Sample Data  •  Analytical tool only")
