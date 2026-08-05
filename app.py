@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, timezone
+from datetime import datetime
 
 # ------------------------------
 # PAGE CONFIG & BRANDING
@@ -64,7 +64,7 @@ st.sidebar.info("Analytical tool only — research & education.")
 st.sidebar.caption("Brand: Black • White • Grey • Red")
 
 # ------------------------------
-# HELPER: FETCH ODDS FROM THE ODDS API
+# HELPERS
 # -----------------------------
 def get_odds_api_key():
     try:
@@ -73,7 +73,6 @@ def get_odds_api_key():
         return None
 
 def fetch_nfl_odds(api_key):
-    """Fetch upcoming NFL odds from The Odds API."""
     if not api_key:
         return None, "No API key found in secrets."
     
@@ -90,67 +89,71 @@ def fetch_nfl_odds(api_key):
         response = requests.get(url, params=params, timeout=12)
         if response.status_code != 200:
             return None, f"API error: {response.status_code} – {response.text[:200]}"
-        data = response.json()
-        return data, None
+        return response.json(), None
     except Exception as e:
         return None, str(e)
 
-def format_odds_rows(odds_data):
-    """Turn API response into a clean dataframe."""
+def parse_game_odds(game):
+    """Parse one game into a clean per-book dataframe."""
+    home = game.get("home_team", "")
+    away = game.get("away_team", "")
+    commence = game.get("commence_time", "")
+    try:
+        dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+        time_str = dt.strftime("%a %b %d • %I:%M %p ET")
+    except:
+        time_str = commence
+    
     rows = []
-    for game in odds_data:
-        home = game.get("home_team", "")
-        away = game.get("away_team", "")
-        commence = game.get("commence_time", "")
-        try:
-            dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
-            time_str = dt.strftime("%a %b %d • %I:%M %p ET")
-        except:
-            time_str = commence
+    for book in game.get("bookmakers", []):
+        book_name = book.get("title", book.get("key", "Unknown"))
+        spread_away = spread_home = ml_away = ml_home = total = over_odds = under_odds = "—"
         
-        for book in game.get("bookmakers", []):
-            book_name = book.get("title", book.get("key", "Unknown"))
-            spread_home = spread_away = ml_home = ml_away = total = over_odds = under_odds = "—"
+        for market in book.get("markets", []):
+            key = market.get("key")
+            outcomes = market.get("outcomes", [])
             
-            for market in book.get("markets", []):
-                key = market.get("key")
-                outcomes = market.get("outcomes", [])
-                
-                if key == "spreads":
-                    for o in outcomes:
-                        if o.get("name") == home:
-                            spread_home = f"{o.get('point', '')} ({o.get('price', '')})"
-                        elif o.get("name") == away:
-                            spread_away = f"{o.get('point', '')} ({o.get('price', '')})"
-                
-                elif key == "h2h":
-                    for o in outcomes:
-                        if o.get("name") == home:
-                            ml_home = o.get("price", "—")
-                        elif o.get("name") == away:
-                            ml_away = o.get("price", "—")
-                
-                elif key == "totals":
-                    for o in outcomes:
-                        if o.get("name") == "Over":
-                            total = o.get("point", "—")
-                            over_odds = o.get("price", "—")
-                        elif o.get("name") == "Under":
-                            under_odds = o.get("price", "—")
+            if key == "spreads":
+                for o in outcomes:
+                    point = o.get("point", "")
+                    price = o.get("price", "")
+                    if o.get("name") == away:
+                        spread_away = f"{point} ({price})"
+                    elif o.get("name") == home:
+                        spread_home = f"{point} ({price})"
             
-            rows.append({
-                "Game": f"{away} @ {home}",
-                "Time": time_str,
-                "Book": book_name,
-                "Away Spread": spread_away,
-                "Home Spread": spread_home,
-                "Away ML": ml_away,
-                "Home ML": ml_home,
-                "Total": total,
-                "Over": over_odds,
-                "Under": under_odds
-            })
-    return pd.DataFrame(rows)
+            elif key == "h2h":
+                for o in outcomes:
+                    if o.get("name") == away:
+                        ml_away = o.get("price", "—")
+                    elif o.get("name") == home:
+                        ml_home = o.get("price", "—")
+            
+            elif key == "totals":
+                for o in outcomes:
+                    if o.get("name") == "Over":
+                        total = o.get("point", "—")
+                        over_odds = o.get("price", "—")
+                    elif o.get("name") == "Under":
+                        under_odds = o.get("price", "—")
+        
+        rows.append({
+            "Book": book_name,
+            "Away Spread": spread_away,
+            "Home Spread": spread_home,
+            "Away ML": ml_away,
+            "Home ML": ml_home,
+            "Total": total,
+            "Over": over_odds,
+            "Under": under_odds
+        })
+    
+    return {
+        "away": away,
+        "home": home,
+        "time": time_str,
+        "odds_df": pd.DataFrame(rows)
+    }
 
 # ------------------------------
 # TITLE
@@ -188,55 +191,56 @@ with tab1:
         st.caption("Home • Carson Beck (R) expected")
     
     st.markdown("---")
-    st.info("Live odds for this game (and others) are on the **Live Odds** tab once the API key is connected.")
+    st.info("Live odds for this game (and others) are on the **Live Odds** tab.")
 
 # =====================================================
-# TAB 2: LIVE ODDS (API)
+# TAB 2: LIVE ODDS — GROUPED BY GAME
 # =====================================================
 with tab2:
-    st.header("Live Odds Board")
-    st.caption("Powered by The Odds API • DraftKings, FanDuel, BetMGM and more")
+    st.header("Live Odds — Grouped by Game")
+    st.caption("Each upcoming game is shown individually with odds from multiple books.")
     
     api_key = get_odds_api_key()
     
     if not api_key:
         st.warning("⚠️ No ODDS_API_KEY found in Streamlit Secrets.")
         st.markdown("""
-        **How to add it:**
-        1. Go to share.streamlit.io → your app → ⋮ → Settings → Secrets
-        2. Paste:
+        Add this in **Settings → Secrets**:
         ```toml
         ODDS_API_KEY = "your-key-here"
         ```
-        3. Save and refresh this page.
         """)
-        
-        # Show last known manual snapshot as fallback
-        st.subheader("Fallback Snapshot (Hall of Fame Game)")
-        fallback = pd.DataFrame([
-            {"Book": "Consensus", "Spread": "CAR -1.5", "ML": "CAR -120 / ARI +100", "Total": "35.5", "Over": "-110", "Under": "-110"},
-            {"Book": "DraftKings", "Spread": "CAR -1.5", "ML": "CAR -118 / ARI -102", "Total": "35.5", "Over": "-110", "Under": "-110"},
-            {"Book": "FanDuel", "Spread": "CAR -1.5", "ML": "CAR -116 / ARI -102", "Total": "35.5", "Over": "-106", "Under": "-114"},
-            {"Book": "Kalshi", "Spread": "~ -1.5", "ML": "~51% / 49%", "Total": "35.5", "Over": "~51¢", "Under": "~49¢"},
-        ])
-        st.dataframe(fallback, use_container_width=True, hide_index=True)
     else:
         with st.spinner("Pulling live NFL odds..."):
             data, error = fetch_nfl_odds(api_key)
         
         if error:
             st.error(f"Could not fetch odds: {error}")
-            st.caption("Check that your API key is correct and you still have remaining requests.")
         elif not data:
-            st.warning("No upcoming NFL games returned by the API right now.")
+            st.warning("No upcoming NFL games returned right now.")
         else:
-            df = format_odds_rows(data)
-            if df.empty:
-                st.warning("Odds data was empty.")
-            else:
-                st.success(f"Loaded {len(df)} book lines across {df['Game'].nunique()} games")
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                st.caption("Odds update when you refresh the page. American odds format.")
+            st.success(f"Found {len(data)} upcoming game(s)")
+            
+            for game in data:
+                parsed = parse_game_odds(game)
+                
+                # Game header
+                st.markdown(f"### {parsed['away']}  @  {parsed['home']}")
+                st.caption(parsed["time"])
+                
+                # Odds table for this game only
+                if not parsed["odds_df"].empty:
+                    st.dataframe(
+                        parsed["odds_df"],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.write("No book odds available for this game yet.")
+                
+                st.markdown("---")
+            
+            st.caption("Odds update when you refresh the page. American format. Data from The Odds API.")
 
 # =====================================================
 # TAB 3: PRESEASON
