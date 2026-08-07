@@ -58,15 +58,62 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("# 🎯 FADE MACHINE")
-st.sidebar.markdown("**NFL Analytics | Live Odds + Historical Trends**")
+st.sidebar.markdown("**NFL Analytics | Live Odds + Results**")
 st.sidebar.markdown("---")
 st.sidebar.info("Analytical tool only — research & education.")
 st.sidebar.caption("Brand: Black • White • Grey • Red")
 
 # =====================================================
+# COMPLETED GAMES (Final scores + bet results)
+# =====================================================
+COMPLETED_GAMES = [
+    {
+        "id": "hof_2026",
+        "label": "HOF Game — CAR @ ARI (Aug 6)",
+        "away": "Carolina Panthers",
+        "home": "Arizona Cardinals",
+        "away_score": 33,
+        "home_score": 30,
+        "final": "CAR 33 – ARI 30",
+        "status": "FINAL",
+        "date": "Thu Aug 6, 2026",
+        "note": "Haynes King walk-off rushing TD as time expired",
+        # Closing-style lines we tracked
+        "spread_line": -1.5,          # Panthers -1.5
+        "spread_favorite": "Carolina Panthers",
+        "total_line": 35.5,
+        "ml_favorite": "Carolina Panthers",
+    }
+]
+
+def evaluate_bets(game):
+    """Return hit/miss for Spread, Total, Moneyline."""
+    away_score = game["away_score"]
+    home_score = game["home_score"]
+    margin = away_score - home_score   # positive = away won
+    total_pts = away_score + home_score
+
+    # Spread (Panthers were -1.5)
+    # Away (CAR) is favorite at -1.5
+    spread_result = "HIT" if margin > 1.5 else "MISS"
+    spread_detail = f"CAR -1.5 → actual margin {margin:+d} → {'Cover' if margin > 1.5 else 'No cover'}"
+
+    # Total
+    total_result = "HIT (Over)" if total_pts > game["total_line"] else ("HIT (Under)" if total_pts < game["total_line"] else "PUSH")
+    total_detail = f"Total {game['total_line']} → actual {total_pts} → {total_result}"
+
+    # Moneyline
+    ml_result = "HIT" if away_score > home_score else "MISS"
+    ml_detail = f"CAR ML → CAR won {away_score}-{home_score}"
+
+    return {
+        "spread": {"result": spread_result, "detail": spread_detail},
+        "total": {"result": total_result, "detail": total_detail},
+        "ml": {"result": ml_result, "detail": ml_detail},
+    }
+
+# =====================================================
 # HISTORICAL ATS + O/U DATA (All 32 Teams)
-# Primary source window: 2021–2025 regular seasons
-# Compiled from public ATS trackers (TeamRankings / similar)
 # =====================================================
 TEAM_HISTORY = {
     "Arizona Cardinals": {"ats": "44-42-0", "cover_pct": 51.2, "ou": "~51% Over", "note": "Near league average ATS"},
@@ -104,7 +151,6 @@ TEAM_HISTORY = {
 }
 
 def get_team_history(team_name):
-    """Return history dict for a team (fuzzy match)."""
     if team_name in TEAM_HISTORY:
         return TEAM_HISTORY[team_name]
     for key, val in TEAM_HISTORY.items():
@@ -264,10 +310,8 @@ def render_odds_card(odds, show_trends_button=True):
     if show_trends_button:
         with st.expander("🔍 Dive deeper — Analytical trends for this matchup"):
             st.markdown(f"### {away_name} @ {home_name}")
-            
             away_hist = get_team_history(away_name)
             home_hist = get_team_history(home_name)
-            
             col_a, col_b = st.columns(2)
             with col_a:
                 st.markdown(f"**{away_abbr} — {away_name}**")
@@ -275,26 +319,13 @@ def render_odds_card(odds, show_trends_button=True):
                     st.write(f"ATS (2021–2025): **{away_hist['ats']}** ({away_hist['cover_pct']}% cover)")
                     st.write(f"O/U lean: {away_hist['ou']}")
                     st.caption(away_hist['note'])
-                else:
-                    st.caption("Historical data not loaded for this team.")
-            
             with col_b:
                 st.markdown(f"**{home_abbr} — {home_name}**")
                 if home_hist:
                     st.write(f"ATS (2021–2025): **{home_hist['ats']}** ({home_hist['cover_pct']}% cover)")
                     st.write(f"O/U lean: {home_hist['ou']}")
                     st.caption(home_hist['note'])
-                else:
-                    st.caption("Historical data not loaded for this team.")
-            
-            st.markdown("---")
-            st.write("""
-            **How to use this:**
-            - Compare cover % — teams above ~53% have been profitable ATS over this window
-            - Look at O/U lean for total bets
-            - Preseason and HOF games carry extra variance (limited starter snaps)
-            """)
-            st.caption("Data primarily covers 2021–2025 regular seasons from public ATS trackers. Not a betting recommendation.")
+            st.caption("Data primarily covers 2021–2025 regular seasons. Not a betting recommendation.")
 
 api_key = get_odds_api_key()
 odds_data, odds_error = (None, None)
@@ -310,120 +341,156 @@ BOOK_OPTIONS = {
 }
 
 st.title("🎯 FADE MACHINE")
-st.caption("NFL Historical Trends • Live Odds • Schedule")
+st.caption("NFL Historical Trends • Live Odds • Final Scores & Bet Results")
+
+# =====================================================
+# GLOBAL GAME FILTER
+# =====================================================
+st.sidebar.markdown("### 🔍 Game Filter")
+all_game_labels = [g["label"] for g in COMPLETED_GAMES] + ["Upcoming / Live Games"]
+selected_games = st.sidebar.multiselect(
+    "Select games to view",
+    options=all_game_labels,
+    default=all_game_labels,
+    help="Choose which completed or upcoming games to display"
+)
 
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔴 HOF Game",
     "📈 Live Odds",
+    "✅ Results & Bets",
     "📅 Preseason",
-    "📆 Regular Season",
     "📊 Trends",
     "📰 Headlines"
 ])
 
+# =====================================================
+# TAB 1: HOF GAME (now FINAL)
+# =====================================================
 with tab1:
-    st.header("Hall of Fame Game")
-    st.markdown("**Thu Aug 6, 2026 • 8:00 PM ET • NBC / Peacock • Canton, OH**")
-    
-    c1, c2, c3 = st.columns([2, 1, 2])
-    with c1:
-        st.subheader("Carolina Panthers")
-        st.caption("Away • Kenny Pickett expected")
-    with c2:
-        st.markdown("### VS")
-    with c3:
-        st.subheader("Arizona Cardinals")
-        st.caption("Home • Carson Beck (R) expected")
-    
-    st.markdown("---")
-    st.subheader("Live Odds")
-    book_choice = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="hof_book")
-    
-    if not api_key:
-        st.warning("Add ODDS_API_KEY in Secrets to load live odds.")
-    elif odds_error:
-        st.error(odds_error)
+    if "HOF Game — CAR @ ARI (Aug 6)" in selected_games:
+        st.header("Hall of Fame Game — FINAL")
+        st.markdown("**Thu Aug 6, 2026 • Canton, OH**")
+        
+        st.success("### FINAL: Carolina Panthers 33 – Arizona Cardinals 30")
+        st.caption("Haynes King walk-off rushing touchdown as time expired")
+        
+        c1, c2, c3 = st.columns([2, 1, 2])
+        with c1:
+            st.subheader("Carolina Panthers")
+            st.markdown("### 33")
+            st.caption("Winner")
+        with c2:
+            st.markdown("### FINAL")
+        with c3:
+            st.subheader("Arizona Cardinals")
+            st.markdown("### 30")
+        
+        st.markdown("---")
+        st.subheader("Bet Results (based on tracked lines)")
+        
+        game = COMPLETED_GAMES[0]
+        results = evaluate_bets(game)
+        
+        r1, r2, r3 = st.columns(3)
+        with r1:
+            st.metric("Spread (CAR -1.5)", results["spread"]["result"])
+            st.caption(results["spread"]["detail"])
+        with r2:
+            st.metric("Total (35.5)", results["total"]["result"])
+            st.caption(results["total"]["detail"])
+        with r3:
+            st.metric("Moneyline (CAR)", results["ml"]["result"])
+            st.caption(results["ml"]["detail"])
+        
+        st.markdown("---")
+        st.info("**Summary:** Spread HIT • Over HIT • Moneyline HIT")
     else:
-        target = None
-        if odds_data:
-            for g in odds_data:
-                teams = (g.get("home_team", "") + g.get("away_team", "")).lower()
-                if "panther" in teams and "cardinal" in teams:
-                    target = g
-                    break
-        if target:
-            odds = extract_book_odds(target, BOOK_OPTIONS.get(book_choice))
-            render_odds_card(odds)
-        else:
-            st.info("HOF Game odds not currently returned by the API. Check the Live Odds tab.")
+        st.info("HOF Game is currently filtered out. Use the sidebar filter to show it.")
 
+# =====================================================
+# TAB 2: LIVE ODDS
+# =====================================================
 with tab2:
-    st.header("Live Odds — All Upcoming Games")
-    book_choice2 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="live_book")
-    
-    if not api_key:
-        st.warning("⚠️ No ODDS_API_KEY found.")
-    elif odds_error:
-        st.error(odds_error)
-    elif not odds_data:
-        st.warning("No upcoming games returned.")
-    else:
-        st.success(f"{len(odds_data)} game(s) available")
-        for g in odds_data:
-            away = g.get("away_team", "")
-            home = g.get("home_team", "")
-            commence = g.get("commence_time", "")
-            try:
-                dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
-                time_str = dt.strftime("%a %b %d • %I:%M %p ET")
-            except:
-                time_str = commence
-            st.markdown(f"#### {short_name(away)} @ {short_name(home)}")
-            st.caption(time_str)
-            odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice2))
-            render_odds_card(odds)
-
-with tab3:
-    st.header("Preseason + Odds")
-    book_choice3 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="pre_book")
-    st.subheader("Hall of Fame Game")
-    st.caption("Carolina Panthers @ Arizona Cardinals • Thu Aug 6")
-    if odds_data:
-        for g in odds_data:
-            teams = (g.get("home_team", "") + g.get("away_team", "")).lower()
-            if "panther" in teams and "cardinal" in teams:
-                odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice3))
+    if "Upcoming / Live Games" in selected_games:
+        st.header("Live Odds — Upcoming Games")
+        book_choice2 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="live_book")
+        
+        if not api_key:
+            st.warning("⚠️ No ODDS_API_KEY found.")
+        elif odds_error:
+            st.error(odds_error)
+        elif not odds_data:
+            st.warning("No upcoming games returned by the API right now.")
+        else:
+            st.success(f"{len(odds_data)} game(s) available")
+            for g in odds_data:
+                away = g.get("away_team", "")
+                home = g.get("home_team", "")
+                # Skip already completed HOF if it still appears
+                teams = (away + home).lower()
+                if "panther" in teams and "cardinal" in teams:
+                    continue
+                commence = g.get("commence_time", "")
+                try:
+                    dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+                    time_str = dt.strftime("%a %b %d • %I:%M %p ET")
+                except:
+                    time_str = commence
+                st.markdown(f"#### {short_name(away)} @ {short_name(home)}")
+                st.caption(time_str)
+                odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice2))
                 render_odds_card(odds)
-                break
-    st.markdown("---")
-    st.subheader("Other Upcoming Games")
-    if odds_data:
-        for g in odds_data:
-            teams = (g.get("home_team", "") + g.get("away_team", "")).lower()
-            if "panther" in teams and "cardinal" in teams:
-                continue
-            away = g.get("away_team", "")
-            home = g.get("home_team", "")
-            st.markdown(f"**{short_name(away)} @ {short_name(home)}**")
-            odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice3))
-            render_odds_card(odds)
-
-with tab4:
-    st.header("Regular Season + Odds")
-    book_choice4 = st.selectbox("Select Sportsbook", list(BOOK_OPTIONS.keys()), key="reg_book")
-    if odds_data:
-        for g in odds_data:
-            away = g.get("away_team", "")
-            home = g.get("home_team", "")
-            st.markdown(f"**{short_name(away)} @ {short_name(home)}**")
-            odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice4))
-            render_odds_card(odds)
     else:
-        st.info("Regular season lines will appear here once posted.")
+        st.info("Upcoming games are currently filtered out.")
 
+# =====================================================
+# TAB 3: RESULTS & BETS
+# =====================================================
+with tab3:
+    st.header("Completed Games — Scores & Bet Results")
+    st.caption("Shows which bets would have HIT or MISS based on the lines we tracked")
+    
+    shown = False
+    for game in COMPLETED_GAMES:
+        if game["label"] in selected_games:
+            shown = True
+            st.subheader(game["label"])
+            st.markdown(f"**{game['final']}**  
+{game['note']}")
+            
+            results = evaluate_bets(game)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                color = "🟢" if "HIT" in results["spread"]["result"] else "🔴"
+                st.markdown(f"{color} **Spread**  \n{results['spread']['result']}  \n{results['spread']['detail']}")
+            with col2:
+                color = "🟢" if "HIT" in results["total"]["result"] else "🔴"
+                st.markdown(f"{color} **Total**  \n{results['total']['result']}  \n{results['total']['detail']}")
+            with col3:
+                color = "🟢" if "HIT" in results["ml"]["result"] else "🔴"
+                st.markdown(f"{color} **Moneyline**  \n{results['ml']['result']}  \n{results['ml']['detail']}")
+            
+            st.markdown("---")
+    
+    if not shown:
+        st.info("No completed games selected in the filter.")
+
+# =====================================================
+# TAB 4: PRESEASON
+# =====================================================
+with tab4:
+    st.header("Preseason Schedule")
+    st.write("HOF Game is complete. Next preseason games begin around Aug 13.")
+    st.caption("Use the Live Odds tab once books post new lines.")
+
+# =====================================================
+# TAB 5: TRENDS
+# =====================================================
 with tab5:
     st.header("Historical ATS & O/U Trends (All 32 Teams)")
-    st.caption("Primary window: 2021–2025 regular seasons | Source: public ATS trackers")
+    st.caption("Primary window: 2021–2025 regular seasons")
     
     rows = []
     for team, data in TEAM_HISTORY.items():
@@ -436,24 +503,17 @@ with tab5:
         })
     df = pd.DataFrame(rows).sort_values("Cover %", ascending=False)
     st.dataframe(df, use_container_width=True, hide_index=True)
-    
-    st.markdown("---")
-    st.subheader("HOF Game Quick Context")
-    st.write("""
-    - Underdogs roughly **7-4 SU** and **8-2-1 ATS** in Hall of Fame Games since 2013
-    - Preseason games carry high variance due to limited starter snaps
-    """)
-    st.success("Research lean context: historical underdog trend in HOF Game")
-    st.caption("For analysis only. Not a betting recommendation.")
 
+# =====================================================
+# TAB 6: HEADLINES
+# =====================================================
 with tab6:
     st.header("Preseason Headlines")
     st.write("""
-    - Carson Beck starts for Cardinals in HOF Game
-    - Jonathon Brooks (Panthers) out
-    - Bijan Robinson extension completed
-    - Preseason Week 1 starts Aug 13
+    - **FINAL:** Panthers 33, Cardinals 30 (Haynes King walk-off TD)
+    - Carson Beck started for the Cardinals and performed well in limited action
+    - Preseason Week 1 games begin around August 13
     """)
 
 st.markdown("---")
-st.caption("FADE MACHINE • Factual ATS + O/U for all 32 teams • Analytical tool only")
+st.caption("FADE MACHINE • Final scores + bet results • Game filter in sidebar • Analytical tool only")
