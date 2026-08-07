@@ -27,91 +27,36 @@ st.markdown("""
     h1, h2, h3, h4, h5, h6 { color: #ffffff !important; }
     [data-testid="stSidebar"] { background-color: #1a1a1a !important; }
     [data-testid="stSidebar"] * { color: #ffffff !important; }
-    
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #1a1a1a;
-        gap: 4px;
-        flex-wrap: wrap;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #cccccc !important;
-        padding: 10px 12px !important;
-        font-size: 0.9rem !important;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #e10600 !important;
-        border-bottom: 2px solid #e10600;
-    }
+    .stTabs [data-baseweb="tab-list"] { background-color: #1a1a1a; gap: 4px; flex-wrap: wrap; }
+    .stTabs [data-baseweb="tab"] { color: #cccccc !important; padding: 10px 12px !important; font-size: 0.9rem !important; }
+    .stTabs [aria-selected="true"] { color: #e10600 !important; border-bottom: 2px solid #e10600; }
     .stButton > button {
-        background-color: #e10600 !important;
-        color: #ffffff !important;
-        border: none;
-        min-height: 44px !important;
-        padding: 0.6rem 1.2rem !important;
-        font-size: 1rem !important;
-        border-radius: 8px !important;
+        background-color: #e10600 !important; color: #ffffff !important; border: none;
+        min-height: 44px !important; padding: 0.6rem 1.2rem !important; font-size: 1rem !important; border-radius: 8px !important;
     }
     .stCaptionContainer { color: #aaaaaa !important; }
-    
     div[data-testid="stExpander"] {
-        border: 1.5px solid #e10600 !important;
-        border-radius: 10px !important;
-        background-color: rgba(225, 6, 0, 0.12) !important;
-        margin-top: 8px;
-        margin-bottom: 16px;
+        border: 1.5px solid #e10600 !important; border-radius: 10px !important;
+        background-color: rgba(225, 6, 0, 0.12) !important; margin-top: 8px; margin-bottom: 16px;
     }
     div[data-testid="stExpander"] summary,
     div[data-testid="stExpander"] summary span,
-    div[data-testid="stExpander"] summary p {
-        color: #ff4d4d !important;
-        font-weight: 600 !important;
-        font-size: 0.95rem !important;
-    }
-    div[data-testid="stExpander"] svg {
-        fill: #e10600 !important;
-    }
-    
+    div[data-testid="stExpander"] summary p { color: #ff4d4d !important; font-weight: 600 !important; font-size: 0.95rem !important; }
+    div[data-testid="stExpander"] svg { fill: #e10600 !important; }
     @media (max-width: 768px) {
-        .stTabs [data-baseweb="tab"] {
-            font-size: 0.8rem !important;
-            padding: 8px 8px !important;
-        }
+        .stTabs [data-baseweb="tab"] { font-size: 0.8rem !important; padding: 8px 8px !important; }
         h1 { font-size: 1.6rem !important; }
         h2 { font-size: 1.3rem !important; }
         h3 { font-size: 1.1rem !important; }
     }
-    
-    [data-testid="stMetricValue"] {
-        color: #ffffff !important;
-        font-size: 1.4rem !important;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #cccccc !important;
-    }
-    
-    /* Top-right Steel balance bar — white text, red border, light red bg */
+    [data-testid="stMetricValue"] { color: #ffffff !important; font-size: 1.4rem !important; }
+    [data-testid="stMetricLabel"] { color: #cccccc !important; }
     .steel-balance-bar {
-        border: 2px solid #e10600;
-        border-radius: 10px;
-        background-color: rgba(225, 6, 0, 0.18);
-        padding: 10px 18px;
-        display: inline-block;
-        text-align: right;
-        min-width: 140px;
+        border: 2px solid #e10600; border-radius: 10px; background-color: rgba(225, 6, 0, 0.18);
+        padding: 10px 18px; display: inline-block; text-align: right; min-width: 140px;
     }
-    .steel-balance-bar .steel-label {
-        font-size: 0.7rem;
-        color: #ffffff !important;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-    }
-    .steel-balance-bar .steel-amount {
-        font-size: 1.25rem;
-        color: #ffffff !important;
-        font-weight: 700;
-        line-height: 1.3;
-    }
+    .steel-balance-bar .steel-label { font-size: 0.7rem; color: #ffffff !important; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .steel-balance-bar .steel-amount { font-size: 1.25rem; color: #ffffff !important; font-weight: 700; line-height: 1.3; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -169,9 +114,12 @@ TEAM_HISTORY = {
     "Washington Commanders": {"ats": "40-44-4", "cover_pct": 47.6, "home_ats": "20-22", "away_ats": "20-22", "fav_ats": "14-18", "dog_ats": "26-26", "ou": "Over lean recently", "note": "Slightly below average"},
 }
 
+# =====================================================
+# STEEL + BETTING CONFIG
+# =====================================================
 STEEL_PRICE_USD = 1.00
 STEEL_PACK_OPTIONS = [1, 5, 10, 25, 50, 100, 500, 1000]
-
+STEEL_STAKE_OPTIONS = [1, 5, 10, 25, 50]
 USERS_DB_PATH = "users_db.json"
 
 def load_users_db():
@@ -212,6 +160,10 @@ def ensure_user_fields(user):
         user["steel_balance"] = 0
     if "transactions" not in user:
         user["transactions"] = []
+    if "open_bets" not in user:
+        user["open_bets"] = []
+    if "settled_bets" not in user:
+        user["settled_bets"] = []
     return user
 
 def register_user(username, password, display_name):
@@ -222,7 +174,6 @@ def register_user(username, password, display_name):
         return False, "Username already exists."
     if len(password) < 4:
         return False, "Password must be at least 4 characters."
-    
     st.session_state.users_db[username] = {
         "password_hash": hash_password(password),
         "display_name": display_name.strip() or username,
@@ -230,10 +181,12 @@ def register_user(username, password, display_name):
         "preferred_book": "DraftKings",
         "steel_balance": 0,
         "transactions": [],
+        "open_bets": [],
+        "settled_bets": [],
         "created_at": datetime.now().isoformat()
     }
     save_users_db(st.session_state.users_db)
-    return True, "Account created! You can log in anytime from the Profile tab."
+    return True, "Account created! Log in from Profile to buy Steel and place bets."
 
 def login_user(username, password):
     username = username.strip().lower()
@@ -278,10 +231,8 @@ def purchase_steel(amount):
         return False, "You must be logged in to buy Steel."
     if amount not in STEEL_PACK_OPTIONS:
         return False, "Invalid pack size."
-    
     user = ensure_user_fields(st.session_state.users_db[username])
     cost = round(amount * STEEL_PRICE_USD, 2)
-    
     user["steel_balance"] = user.get("steel_balance", 0) + amount
     tx = {
         "id": f"tx_{datetime.now().strftime('%Y%m%d%H%M%S')}_{amount}",
@@ -294,10 +245,200 @@ def purchase_steel(amount):
     }
     user["transactions"] = user.get("transactions", [])
     user["transactions"].insert(0, tx)
-    
     st.session_state.users_db[username] = user
     save_users_db(st.session_state.users_db)
-    return True, f"Added {amount} Steel to your account! New balance: {user['steel_balance']} Steel"
+    return True, f"Added {amount} Steel! Balance: {user['steel_balance']}"
+
+def american_to_profit(stake, odds):
+    """Profit only (not including stake return)."""
+    try:
+        odds = float(odds)
+    except (TypeError, ValueError):
+        odds = -110
+    if odds >= 0:
+        return round(stake * (odds / 100.0), 2)
+    return round(stake * (100.0 / abs(odds)), 2)
+
+def place_steel_bet(game_id, away, home, market, selection, line, odds, stake, label=""):
+    """Option A: place a fixed-odds Steel bet. Structure supports Option B later."""
+    username = st.session_state.current_user
+    if not username or username not in st.session_state.users_db:
+        return False, "Log in to place bets."
+    try:
+        stake = int(stake)
+    except (TypeError, ValueError):
+        return False, "Invalid stake."
+    if stake not in STEEL_STAKE_OPTIONS:
+        return False, "Stake must be 1, 5, 10, 25, or 50 Steel."
+    user = ensure_user_fields(st.session_state.users_db[username])
+    bal = user.get("steel_balance", 0)
+    if stake > bal:
+        return False, f"Insufficient Steel. Balance: {bal}"
+    profit = american_to_profit(stake, odds)
+    bet = {
+        "id": f"bet_{datetime.now().strftime('%Y%m%d%H%M%S')}_{stake}",
+        "game_id": game_id,
+        "label": label or f"{short_name(away)} @ {short_name(home)}",
+        "away": away,
+        "home": home,
+        "market": market,          # spread | total | ml
+        "selection": selection,    # away | home | over | under
+        "line": line,
+        "odds": odds,
+        "stake": stake,
+        "to_win": profit,
+        "status": "open",
+        "steel_result": 0,
+        "placed_at": datetime.now().isoformat(),
+        "settled_at": None,
+        # Option B hook: market_type stays "fixed" until prediction markets
+        "market_type": "fixed",
+    }
+    user["steel_balance"] = bal - stake
+    user["open_bets"].insert(0, bet)
+    user["transactions"].insert(0, {
+        "id": f"tx_bet_{bet['id']}",
+        "type": "bet_stake",
+        "steel_amount": -stake,
+        "usd_cost": 0,
+        "status": "completed",
+        "note": f"Bet {stake} Steel on {bet['label']} ({market}/{selection})",
+        "timestamp": datetime.now().isoformat()
+    })
+    st.session_state.users_db[username] = user
+    save_users_db(st.session_state.users_db)
+    return True, f"Bet placed: {stake} Steel on {selection.upper()} ({market}). Balance: {user['steel_balance']}"
+
+def _match_completed_game(bet):
+    for g in COMPLETED_GAMES:
+        if bet.get("game_id") == g["id"]:
+            return g
+        # fuzzy match by team names
+        if bet.get("away") == g["away"] and bet.get("home") == g["home"]:
+            return g
+    return None
+
+def _resolve_bet_result(bet, game):
+    away_score = game["away_score"]
+    home_score = game["home_score"]
+    margin = away_score - home_score
+    total_pts = away_score + home_score
+    market = bet["market"]
+    selection = bet["selection"]
+    try:
+        line = float(bet.get("line") if bet.get("line") not in (None, "", "—") else 0)
+    except (TypeError, ValueError):
+        line = 0.0
+
+    if market == "spread":
+        # selection away: covers if margin + away_line > 0
+        # selection home: covers if -margin + home_line > 0 i.e. home_line - margin > 0
+        if selection == "away":
+            diff = margin + line
+        else:
+            diff = (-margin) + line
+        if abs(diff) < 1e-9:
+            return "push"
+        return "won" if diff > 0 else "lost"
+
+    if market == "total":
+        if selection == "over":
+            if total_pts > line:
+                return "won"
+            if total_pts < line:
+                return "lost"
+            return "push"
+        else:
+            if total_pts < line:
+                return "won"
+            if total_pts > line:
+                return "lost"
+            return "push"
+
+    if market == "ml":
+        if away_score == home_score:
+            return "push"
+        if selection == "away":
+            return "won" if away_score > home_score else "lost"
+        return "won" if home_score > away_score else "lost"
+
+    return "lost"
+
+def settle_user_bets():
+    """Auto-settle open bets against COMPLETED_GAMES."""
+    username = st.session_state.current_user
+    if not username or username not in st.session_state.users_db:
+        return 0
+    user = ensure_user_fields(st.session_state.users_db[username])
+    still_open = []
+    settled_count = 0
+    for bet in user.get("open_bets", []):
+        game = _match_completed_game(bet)
+        if not game:
+            still_open.append(bet)
+            continue
+        result = _resolve_bet_result(bet, game)
+        stake = bet.get("stake", 0)
+        to_win = bet.get("to_win", 0)
+        if result == "won":
+            payout = stake + to_win
+            user["steel_balance"] = user.get("steel_balance", 0) + payout
+            bet["status"] = "won"
+            bet["steel_result"] = to_win
+            note = f"WON +{to_win} Steel on {bet.get('label')}"
+        elif result == "push":
+            user["steel_balance"] = user.get("steel_balance", 0) + stake
+            bet["status"] = "push"
+            bet["steel_result"] = 0
+            note = f"PUSH — stake returned on {bet.get('label')}"
+        else:
+            bet["status"] = "lost"
+            bet["steel_result"] = -stake
+            note = f"LOST -{stake} Steel on {bet.get('label')}"
+        bet["settled_at"] = datetime.now().isoformat()
+        user["settled_bets"].insert(0, bet)
+        user["transactions"].insert(0, {
+            "id": f"tx_settle_{bet['id']}",
+            "type": f"bet_{bet['status']}",
+            "steel_amount": bet["steel_result"] if result != "push" else 0,
+            "usd_cost": 0,
+            "status": "completed",
+            "note": note,
+            "timestamp": datetime.now().isoformat()
+        })
+        settled_count += 1
+    user["open_bets"] = still_open
+    st.session_state.users_db[username] = user
+    save_users_db(st.session_state.users_db)
+    return settled_count
+
+def get_bankroll_stats(user):
+    """Option C: unit / bankroll analytics."""
+    settled = user.get("settled_bets", [])
+    open_bets = user.get("open_bets", [])
+    total_staked = sum(b.get("stake", 0) for b in settled) + sum(b.get("stake", 0) for b in open_bets)
+    settled_staked = sum(b.get("stake", 0) for b in settled)
+    net_pnl = sum(b.get("steel_result", 0) for b in settled)
+    wins = sum(1 for b in settled if b.get("status") == "won")
+    losses = sum(1 for b in settled if b.get("status") == "lost")
+    pushes = sum(1 for b in settled if b.get("status") == "push")
+    decided = wins + losses
+    win_rate = round((wins / decided) * 100, 1) if decided else 0.0
+    roi = round((net_pnl / settled_staked) * 100, 1) if settled_staked else 0.0
+    return {
+        "balance": user.get("steel_balance", 0),
+        "open_exposure": sum(b.get("stake", 0) for b in open_bets),
+        "total_staked": total_staked,
+        "settled_staked": settled_staked,
+        "net_pnl": net_pnl,
+        "wins": wins,
+        "losses": losses,
+        "pushes": pushes,
+        "win_rate": win_rate,
+        "roi": roi,
+        "open_count": len(open_bets),
+        "settled_count": len(settled),
+    }
 
 def get_team_history(team_name):
     if team_name in TEAM_HISTORY:
@@ -306,6 +447,154 @@ def get_team_history(team_name):
         if team_name.lower() in key.lower() or key.lower() in team_name.lower():
             return val
     return None
+
+def short_name(full):
+    mapping = {
+        "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
+        "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI",
+        "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE", "Dallas Cowboys": "DAL",
+        "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
+        "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX",
+        "Kansas City Chiefs": "KC", "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC",
+        "Los Angeles Rams": "LAR", "Miami Dolphins": "MIA", "Minnesota Vikings": "MIN",
+        "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
+        "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT",
+        "San Francisco 49ers": "SF", "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB",
+        "Tennessee Titans": "TEN", "Washington Commanders": "WAS"
+    }
+    return mapping.get(full, full[:3].upper() if full else "???")
+
+def evaluate_bets(game):
+    away_score = game["away_score"]
+    home_score = game["home_score"]
+    margin = away_score - home_score
+    total_pts = away_score + home_score
+    spread_result = "HIT" if margin > 1.5 else "MISS"
+    spread_detail = f"CAR -1.5 → actual margin {margin:+d} → {'Cover' if margin > 1.5 else 'No cover'}"
+    total_result = "HIT (Over)" if total_pts > game["total_line"] else ("HIT (Under)" if total_pts < game["total_line"] else "PUSH")
+    total_detail = f"Total {game['total_line']} → actual {total_pts} → {total_result}"
+    ml_result = "HIT" if away_score > home_score else "MISS"
+    ml_detail = f"CAR ML → CAR won {away_score}-{home_score}"
+    return {
+        "spread": {"result": spread_result, "detail": spread_detail},
+        "total": {"result": total_result, "detail": total_detail},
+        "ml": {"result": ml_result, "detail": ml_detail},
+    }
+
+def render_odds_card(odds, show_trends_button=True):
+    if not odds:
+        st.caption("No odds available.")
+        return
+    away_abbr = short_name(odds["away"])
+    home_abbr = short_name(odds["home"])
+    away_name = odds["away"]
+    home_name = odds["home"]
+    card_html = f'''
+<div style="border:1.5px solid #ffffff; border-radius:12px; padding:14px 14px; margin-bottom:10px; background-color:#141414;">
+  <div style="display:flex; margin-bottom:10px; color:#888; font-size:0.68rem; letter-spacing:0.3px;">
+    <div style="flex:3;">TEAM</div>
+    <div style="flex:2; text-align:center;">SPREAD</div>
+    <div style="flex:2; text-align:center;">TOTAL</div>
+    <div style="flex:2; text-align:center;">ML</div>
+  </div>
+  <div style="display:flex; align-items:center; margin-bottom:12px;">
+    <div style="flex:3;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">{away_abbr}</div><div style="font-size:0.72rem; color:#aaaaaa;">{away_name}</div></div>
+    <div style="flex:2; text-align:center;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["away_spread"]}</div><div style="font-size:0.72rem; color:#aaaaaa;">{odds["away_spread_odds"]}</div></div>
+    <div style="flex:2; text-align:center;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">O {odds["total"]}</div><div style="font-size:0.72rem; color:#aaaaaa;">{odds["over_odds"]}</div></div>
+    <div style="flex:2; text-align:center;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["away_ml"]}</div></div>
+  </div>
+  <div style="display:flex; align-items:center;">
+    <div style="flex:3;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">{home_abbr}</div><div style="font-size:0.72rem; color:#aaaaaa;">{home_name}</div></div>
+    <div style="flex:2; text-align:center;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["home_spread"]}</div><div style="font-size:0.72rem; color:#aaaaaa;">{odds["home_spread_odds"]}</div></div>
+    <div style="flex:2; text-align:center;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">U {odds["total"]}</div><div style="font-size:0.72rem; color:#aaaaaa;">{odds["under_odds"]}</div></div>
+    <div style="flex:2; text-align:center;"><div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["home_ml"]}</div></div>
+  </div>
+</div>
+'''
+    st.markdown(card_html, unsafe_allow_html=True)
+    if show_trends_button:
+        with st.expander("🔍 Dive deeper — Analytical trends"):
+            st.markdown(f"**{away_name} @ {home_name}**")
+            away_hist = get_team_history(away_name)
+            home_hist = get_team_history(home_name)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"**{away_abbr}**")
+                if away_hist:
+                    st.write(f"Overall: **{away_hist['ats']}** ({away_hist['cover_pct']}%)")
+                    st.write(f"Home: {away_hist.get('home_ats', '—')}")
+                    st.write(f"Away: {away_hist.get('away_ats', '—')}")
+                    st.write(f"As Fav: {away_hist.get('fav_ats', '—')}")
+                    st.write(f"As Dog: {away_hist.get('dog_ats', '—')}")
+                    st.caption(away_hist.get('note', ''))
+            with col_b:
+                st.markdown(f"**{home_abbr}**")
+                if home_hist:
+                    st.write(f"Overall: **{home_hist['ats']}** ({home_hist['cover_pct']}%)")
+                    st.write(f"Home: {home_hist.get('home_ats', '—')}")
+                    st.write(f"Away: {home_hist.get('away_ats', '—')}")
+                    st.write(f"As Fav: {home_hist.get('fav_ats', '—')}")
+                    st.write(f"As Dog: {home_hist.get('dog_ats', '—')}")
+                    st.caption(home_hist.get('note', ''))
+            st.caption("Splits are approximate 2021–2025 regular season data. Not a betting recommendation.")
+
+def render_place_bet_ui(odds, game_id, key_prefix):
+    """Option A UI under each odds card."""
+    if not odds:
+        return
+    with st.expander("⚙️ Place Steel Bet"):
+        if not st.session_state.authenticated:
+            st.warning("Log in via Profile to place Steel bets.")
+            return
+        bal = get_current_profile().get("steel_balance", 0) if get_current_profile() else 0
+        st.caption(f"Available: {bal} Steel")
+        market = st.selectbox("Market", ["spread", "total", "ml"], key=f"{key_prefix}_mkt",
+                              format_func=lambda x: {"spread": "Spread", "total": "Total", "ml": "Moneyline"}[x])
+        if market == "spread":
+            sel = st.radio("Side", ["away", "home"], key=f"{key_prefix}_sel",
+                           format_func=lambda x: f"{short_name(odds['away'])} {odds['away_spread']}" if x == "away" else f"{short_name(odds['home'])} {odds['home_spread']}")
+            line = odds["away_spread"] if sel == "away" else odds["home_spread"]
+            odds_val = odds["away_spread_odds"] if sel == "away" else odds["home_spread_odds"]
+        elif market == "total":
+            sel = st.radio("Side", ["over", "under"], key=f"{key_prefix}_sel",
+                           format_func=lambda x: f"Over {odds['total']}" if x == "over" else f"Under {odds['total']}")
+            line = odds["total"]
+            odds_val = odds["over_odds"] if sel == "over" else odds["under_odds"]
+        else:
+            sel = st.radio("Side", ["away", "home"], key=f"{key_prefix}_sel",
+                           format_func=lambda x: f"{short_name(odds['away'])} ML {odds['away_ml']}" if x == "away" else f"{short_name(odds['home'])} ML {odds['home_ml']}")
+            line = 0
+            odds_val = odds["away_ml"] if sel == "away" else odds["home_ml"]
+        stake = st.selectbox("Stake (Steel)", STEEL_STAKE_OPTIONS, index=1, key=f"{key_prefix}_stake")
+        try:
+            profit = american_to_profit(stake, odds_val)
+            st.write(f"To win: **{profit}** Steel  ·  Potential return: **{stake + profit}** Steel")
+        except Exception:
+            st.write("Odds unavailable for payout calc.")
+        if st.button("Confirm Bet", key=f"{key_prefix}_btn"):
+            ok, msg = place_steel_bet(
+                game_id=game_id,
+                away=odds["away"],
+                home=odds["home"],
+                market=market,
+                selection=sel,
+                line=line,
+                odds=odds_val,
+                stake=stake,
+                label=f"{short_name(odds['away'])} @ {short_name(odds['home'])}"
+            )
+            if ok:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
+# =====================================================
+# SIDEBAR + HEADER
+# =====================================================
+# Settle any open bets against completed games on each load
+if st.session_state.authenticated:
+    settle_user_bets()
 
 profile = get_current_profile()
 display_name = None
@@ -327,16 +616,12 @@ else:
     st.sidebar.caption("Optional login available in Profile tab")
 
 st.sidebar.markdown("---")
-st.sidebar.info("Analytical tool only — research & education.")
+st.sidebar.info("Analytical / virtual Steel tool — research & education.")
 st.sidebar.caption("Brand: Black • White • Grey • Red")
 
 st.sidebar.markdown("### 🔍 Game Filter")
 all_game_labels = [g["label"] for g in COMPLETED_GAMES] + ["Upcoming / Live Games"]
-selected_games = st.sidebar.multiselect(
-    "Select games to view",
-    options=all_game_labels,
-    default=all_game_labels
-)
+selected_games = st.sidebar.multiselect("Select games to view", options=all_game_labels, default=all_game_labels)
 
 def get_odds_api_key():
     try:
@@ -350,11 +635,8 @@ def fetch_nfl_odds(api_key):
         return None, "No API key found."
     url = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
     params = {
-        "apiKey": api_key,
-        "regions": "us",
-        "markets": "h2h,spreads,totals",
-        "oddsFormat": "american",
-        "bookmakers": "draftkings,fanduel,betmgm,williamhill_us,bovada"
+        "apiKey": api_key, "regions": "us", "markets": "h2h,spreads,totals",
+        "oddsFormat": "american", "bookmakers": "draftkings,fanduel,betmgm,williamhill_us,bovada"
     }
     try:
         r = requests.get(url, params=params, timeout=12)
@@ -412,138 +694,21 @@ def extract_book_odds(game, book_key=None):
                     result["under_odds"] = price
     return result
 
-def short_name(full):
-    mapping = {
-        "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL",
-        "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI",
-        "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE", "Dallas Cowboys": "DAL",
-        "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB",
-        "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX",
-        "Kansas City Chiefs": "KC", "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC",
-        "Los Angeles Rams": "LAR", "Miami Dolphins": "MIA", "Minnesota Vikings": "MIN",
-        "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG",
-        "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT",
-        "San Francisco 49ers": "SF", "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB",
-        "Tennessee Titans": "TEN", "Washington Commanders": "WAS"
-    }
-    return mapping.get(full, full[:3].upper())
-
-def evaluate_bets(game):
-    away_score = game["away_score"]
-    home_score = game["home_score"]
-    margin = away_score - home_score
-    total_pts = away_score + home_score
-    spread_result = "HIT" if margin > 1.5 else "MISS"
-    spread_detail = f"CAR -1.5 → actual margin {margin:+d} → {'Cover' if margin > 1.5 else 'No cover'}"
-    total_result = "HIT (Over)" if total_pts > game["total_line"] else ("HIT (Under)" if total_pts < game["total_line"] else "PUSH")
-    total_detail = f"Total {game['total_line']} → actual {total_pts} → {total_result}"
-    ml_result = "HIT" if away_score > home_score else "MISS"
-    ml_detail = f"CAR ML → CAR won {away_score}-{home_score}"
-    return {
-        "spread": {"result": spread_result, "detail": spread_detail},
-        "total": {"result": total_result, "detail": total_detail},
-        "ml": {"result": ml_result, "detail": ml_detail},
-    }
-
-def render_odds_card(odds, show_trends_button=True):
-    if not odds:
-        st.caption("No odds available.")
-        return
-    away_abbr = short_name(odds["away"])
-    home_abbr = short_name(odds["home"])
-    away_name = odds["away"]
-    home_name = odds["home"]
-    
-    card_html = f'''
-<div style="border:1.5px solid #ffffff; border-radius:12px; padding:14px 14px; margin-bottom:10px; background-color:#141414;">
-  <div style="display:flex; margin-bottom:10px; color:#888; font-size:0.68rem; letter-spacing:0.3px;">
-    <div style="flex:3;">TEAM</div>
-    <div style="flex:2; text-align:center;">SPREAD</div>
-    <div style="flex:2; text-align:center;">TOTAL</div>
-    <div style="flex:2; text-align:center;">ML</div>
-  </div>
-  <div style="display:flex; align-items:center; margin-bottom:12px;">
-    <div style="flex:3;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">{away_abbr}</div>
-      <div style="font-size:0.72rem; color:#aaaaaa;">{away_name}</div>
-    </div>
-    <div style="flex:2; text-align:center;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["away_spread"]}</div>
-      <div style="font-size:0.72rem; color:#aaaaaa;">{odds["away_spread_odds"]}</div>
-    </div>
-    <div style="flex:2; text-align:center;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">O {odds["total"]}</div>
-      <div style="font-size:0.72rem; color:#aaaaaa;">{odds["over_odds"]}</div>
-    </div>
-    <div style="flex:2; text-align:center;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["away_ml"]}</div>
-    </div>
-  </div>
-  <div style="display:flex; align-items:center;">
-    <div style="flex:3;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">{home_abbr}</div>
-      <div style="font-size:0.72rem; color:#aaaaaa;">{home_name}</div>
-    </div>
-    <div style="flex:2; text-align:center;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["home_spread"]}</div>
-      <div style="font-size:0.72rem; color:#aaaaaa;">{odds["home_spread_odds"]}</div>
-    </div>
-    <div style="flex:2; text-align:center;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">U {odds["total"]}</div>
-      <div style="font-size:0.72rem; color:#aaaaaa;">{odds["under_odds"]}</div>
-    </div>
-    <div style="flex:2; text-align:center;">
-      <div style="font-weight:700; font-size:1rem; color:#ffffff;">{odds["home_ml"]}</div>
-    </div>
-  </div>
-</div>
-'''
-    st.markdown(card_html, unsafe_allow_html=True)
-    
-    if show_trends_button:
-        with st.expander("🔍 Dive deeper — Analytical trends"):
-            st.markdown(f"**{away_name} @ {home_name}**")
-            away_hist = get_team_history(away_name)
-            home_hist = get_team_history(home_name)
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(f"**{away_abbr}**")
-                if away_hist:
-                    st.write(f"Overall: **{away_hist['ats']}** ({away_hist['cover_pct']}%)")
-                    st.write(f"Home: {away_hist.get('home_ats', '—')}")
-                    st.write(f"Away: {away_hist.get('away_ats', '—')}")
-                    st.write(f"As Fav: {away_hist.get('fav_ats', '—')}")
-                    st.write(f"As Dog: {away_hist.get('dog_ats', '—')}")
-                    st.caption(away_hist.get('note', ''))
-            with col_b:
-                st.markdown(f"**{home_abbr}**")
-                if home_hist:
-                    st.write(f"Overall: **{home_hist['ats']}** ({home_hist['cover_pct']}%)")
-                    st.write(f"Home: {home_hist.get('home_ats', '—')}")
-                    st.write(f"Away: {home_hist.get('away_ats', '—')}")
-                    st.write(f"As Fav: {home_hist.get('fav_ats', '—')}")
-                    st.write(f"As Dog: {home_hist.get('dog_ats', '—')}")
-                    st.caption(home_hist.get('note', ''))
-            st.caption("Splits are approximate 2021–2025 regular season data. Not a betting recommendation.")
-
 api_key = get_odds_api_key()
 odds_data, odds_error = (None, None)
 if api_key:
     odds_data, odds_error = fetch_nfl_odds(api_key)
 
 BOOK_OPTIONS = {
-    "DraftKings": "draftkings",
-    "FanDuel": "fanduel",
-    "BetMGM": "betmgm",
-    "Caesars": "williamhill_us",
-    "Bovada": "bovada"
+    "DraftKings": "draftkings", "FanDuel": "fanduel", "BetMGM": "betmgm",
+    "Caesars": "williamhill_us", "Bovada": "bovada"
 }
 ALL_TEAMS = sorted(list(TEAM_HISTORY.keys()))
 
 header_left, header_right = st.columns([3, 1])
 with header_left:
     st.title("🎯 FADE MACHINE")
-    st.caption("NFL Historical Trends • Live Odds • Final Scores & Bet Results")
+    st.caption("NFL Trends • Live Odds • Steel Bets • Bankroll Tracker")
 with header_right:
     bal_display = steel_balance if profile else 0
     st.markdown(f"""
@@ -555,9 +720,9 @@ with header_right:
     </div>
     """, unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🔴 HOF Game", "📈 Live Odds", "✅ Results", "📅 Preseason",
-    "📊 Trends", "📰 Headlines", "👤 Profile"
+    "📊 Trends", "📰 Headlines", "💰 My Bets", "👤 Profile"
 ])
 
 with tab1:
@@ -591,12 +756,13 @@ with tab1:
             st.metric("Moneyline (CAR)", results["ml"]["result"])
             st.caption(results["ml"]["detail"])
         st.info("**Summary:** Spread HIT • Over HIT • Moneyline HIT")
+        st.caption("Open Steel bets on this game auto-settle in My Bets.")
     else:
         st.info("HOF Game is currently filtered out.")
 
 with tab2:
     if "Upcoming / Live Games" in selected_games:
-        st.header("Live Odds")
+        st.header("Live Odds + Place Steel Bets")
         book_choice2 = st.selectbox("Sportsbook", list(BOOK_OPTIONS.keys()), key="live_book")
         if not api_key:
             st.warning("No ODDS_API_KEY found.")
@@ -606,7 +772,7 @@ with tab2:
             st.warning("No upcoming games returned.")
         else:
             st.success(f"{len(odds_data)} game(s) available")
-            for g in odds_data:
+            for i, g in enumerate(odds_data):
                 away = g.get("away_team", "")
                 home = g.get("home_team", "")
                 teams = (away + home).lower()
@@ -616,12 +782,14 @@ with tab2:
                 try:
                     dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
                     time_str = dt.strftime("%a %b %d • %I:%M %p ET")
-                except:
+                except Exception:
                     time_str = commence
+                game_id = f"{away}_{home}_{commence}"
                 st.markdown(f"#### {short_name(away)} @ {short_name(home)}")
                 st.caption(time_str)
                 odds = extract_book_odds(g, BOOK_OPTIONS.get(book_choice2))
                 render_odds_card(odds)
+                render_place_bet_ui(odds, game_id, key_prefix=f"live_{i}")
     else:
         st.info("Upcoming games filtered out.")
 
@@ -652,21 +820,17 @@ with tab3:
 with tab4:
     st.header("Preseason Schedule")
     st.write("HOF Game is complete. Next preseason games begin around Aug 13.")
-    st.caption("Use the Live Odds tab once books post new lines.")
+    st.caption("Use Live Odds once books post new lines — place Steel bets there.")
 
 with tab5:
     st.header("Historical ATS Trends (All 32 Teams)")
-    st.caption("2021–2025 • Includes Home/Away and Fav/Dog splits")
+    st.caption("2021–2025 • Home/Away and Fav/Dog splits")
     rows = []
     for team, data in TEAM_HISTORY.items():
         rows.append({
-            "Team": team,
-            "Overall": data["ats"],
-            "Cover %": data["cover_pct"],
-            "Home": data.get("home_ats", "—"),
-            "Away": data.get("away_ats", "—"),
-            "As Fav": data.get("fav_ats", "—"),
-            "As Dog": data.get("dog_ats", "—"),
+            "Team": team, "Overall": data["ats"], "Cover %": data["cover_pct"],
+            "Home": data.get("home_ats", "—"), "Away": data.get("away_ats", "—"),
+            "As Fav": data.get("fav_ats", "—"), "As Dog": data.get("dog_ats", "—"),
         })
     df = pd.DataFrame(rows).sort_values("Cover %", ascending=False)
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -679,11 +843,75 @@ with tab6:
     - Preseason Week 1 games begin around August 13
     """)
 
+# =====================================================
+# MY BETS — Option A + Option C bankroll
+# =====================================================
 with tab7:
-    st.header("👤 Profile & Steel")
-    
+    st.header("💰 My Bets & Bankroll")
+    st.caption("Option A: place/settle Steel bets · Option C: unit tracker & ROI · Option B (prediction markets) coming later")
+
     if not (st.session_state.authenticated and get_current_profile()):
-        st.caption("Create an account or log in to buy Steel and track transactions.")
+        st.warning("Log in via the Profile tab to place bets and track your Steel bankroll.")
+    else:
+        user = get_current_profile()
+        stats = get_bankroll_stats(user)
+
+        # Option C metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Steel Balance", stats["balance"])
+        m2.metric("Net P&L", f"{stats['net_pnl']:+.1f}")
+        m3.metric("Win Rate", f"{stats['win_rate']}%")
+        m4.metric("ROI", f"{stats['roi']}%")
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Open Bets", stats["open_count"])
+        c2.metric("Open Exposure", stats["open_exposure"])
+        c3.metric("Record", f"{stats['wins']}-{stats['losses']}-{stats['pushes']}")
+
+        st.markdown("---")
+        open_sub, settled_sub = st.tabs(["Open Bets", "Settled History"])
+
+        with open_sub:
+            open_bets = user.get("open_bets", [])
+            if not open_bets:
+                st.caption("No open bets. Place one from Live Odds → Place Steel Bet.")
+            else:
+                rows = []
+                for b in open_bets:
+                    rows.append({
+                        "Game": b.get("label", ""),
+                        "Market": b.get("market", "").upper(),
+                        "Pick": str(b.get("selection", "")).upper(),
+                        "Line": b.get("line", ""),
+                        "Odds": b.get("odds", ""),
+                        "Stake": b.get("stake", 0),
+                        "To Win": b.get("to_win", 0),
+                        "Placed": str(b.get("placed_at", ""))[:16].replace("T", " "),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        with settled_sub:
+            settled = user.get("settled_bets", [])
+            if not settled:
+                st.caption("No settled bets yet.")
+            else:
+                rows = []
+                for b in settled:
+                    rows.append({
+                        "Game": b.get("label", ""),
+                        "Market": b.get("market", "").upper(),
+                        "Pick": str(b.get("selection", "")).upper(),
+                        "Stake": b.get("stake", 0),
+                        "Result": b.get("status", "").upper(),
+                        "Steel P&L": b.get("steel_result", 0),
+                        "Settled": str(b.get("settled_at", ""))[:16].replace("T", " "),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+with tab8:
+    st.header("👤 Profile & Steel")
+    if not (st.session_state.authenticated and get_current_profile()):
+        st.caption("Create an account or log in to buy Steel, place bets, and track bankroll.")
         login_tab, register_tab = st.tabs(["Login", "Create Account"])
         with login_tab:
             with st.form("login_form"):
@@ -714,7 +942,6 @@ with tab7:
     else:
         current = get_current_profile()
         steel_bal = current.get("steel_balance", 0)
-        
         st.markdown(f"""
         <div style="border:1.5px solid #e10600; border-radius:12px; padding:16px; margin-bottom:16px; background:rgba(225,6,0,0.12);">
           <div style="font-size:0.85rem; color:#aaaaaa;">STEEL BALANCE</div>
@@ -722,17 +949,14 @@ with tab7:
           <div style="font-size:0.8rem; color:#cccccc;">Logged in as {current.get('display_name')}</div>
         </div>
         """, unsafe_allow_html=True)
-        
         sub_account, sub_buy, sub_history = st.tabs(["Account", "Buy Steel", "Transaction History"])
-        
         with sub_account:
             st.subheader("Edit Profile")
             with st.form("profile_form"):
                 new_display = st.text_input("Display Name", value=current.get("display_name", ""))
                 new_teams = st.multiselect("Favorite NFL Teams", options=ALL_TEAMS, default=current.get("favorite_teams", []))
                 new_book = st.selectbox(
-                    "Preferred Sportsbook",
-                    options=list(BOOK_OPTIONS.keys()),
+                    "Preferred Sportsbook", options=list(BOOK_OPTIONS.keys()),
                     index=list(BOOK_OPTIONS.keys()).index(current.get("preferred_book", "DraftKings")) if current.get("preferred_book") in BOOK_OPTIONS else 0
                 )
                 if st.form_submit_button("Save Profile"):
@@ -745,21 +969,15 @@ with tab7:
             if st.button("Logout", key="profile_logout"):
                 logout_user()
                 st.rerun()
-        
         with sub_buy:
             st.subheader("⚙️ Buy Steel Packs")
-            st.caption("Choose a pack size. Demo mode — no real payment charged yet.")
-            
+            st.caption("Demo mode — no real payment charged yet.")
             pack_amount = st.selectbox(
-                "Select Steel pack size",
-                options=STEEL_PACK_OPTIONS,
-                index=1,
+                "Select Steel pack size", options=STEEL_PACK_OPTIONS, index=1,
                 format_func=lambda x: f"{x} Steel — ${x * STEEL_PRICE_USD:.2f}"
             )
-            
             cost = pack_amount * STEEL_PRICE_USD
             st.markdown(f"**Selected:** {pack_amount} Steel for **${cost:.2f}**")
-            
             if st.button(f"Purchase {pack_amount} Steel", type="primary"):
                 success, msg = purchase_steel(pack_amount)
                 if success:
@@ -767,26 +985,23 @@ with tab7:
                     st.rerun()
                 else:
                     st.error(msg)
-            
-            st.info("💡 Real payment processing (Stripe/PayPal) can be connected later. This is a simulated purchase for testing.")
-        
+            st.info("💡 Real payments (Stripe/PayPal) can be connected later.")
         with sub_history:
             st.subheader("Transaction History")
             txs = current.get("transactions", [])
             if not txs:
-                st.caption("No transactions yet. Buy a Steel pack to see history here.")
+                st.caption("No transactions yet.")
             else:
                 rows = []
                 for t in txs:
+                    amt = t.get("steel_amount", 0)
                     rows.append({
-                        "Date": t.get("timestamp", "")[:19].replace("T", " "),
-                        "Type": t.get("type", "").title(),
-                        "Steel": f"+{t.get('steel_amount', 0)}",
-                        "Cost (USD)": f"${t.get('usd_cost', 0):.2f}",
-                        "Status": t.get("status", "").title(),
+                        "Date": str(t.get("timestamp", ""))[:19].replace("T", " "),
+                        "Type": str(t.get("type", "")).replace("_", " ").title(),
+                        "Steel": f"{amt:+}" if isinstance(amt, (int, float)) else amt,
                         "Note": t.get("note", ""),
                     })
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 st.markdown("---")
-st.caption("FADE MACHINE • Steel packs: 1 · 5 · 10 · 25 · 50 · 100 · 500 · 1000")
+st.caption("FADE MACHINE • Steel bets (A) • Bankroll tracker (C) • Prediction markets (B) later")
