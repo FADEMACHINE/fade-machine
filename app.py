@@ -146,12 +146,14 @@ TEAM_HISTORY = {
 }
 
 # =====================================================
-# PERSISTENT USER DATABASE (users_db.json)
+# STEEL CURRENCY
 # =====================================================
+STEEL_PRICE_USD = 1.00  # Demo price: $1.00 per Steel
+STEEL_PACK_OPTIONS = list(range(5, 105, 5))  # 5, 10, 15 ... 100
+
 USERS_DB_PATH = "users_db.json"
 
 def load_users_db():
-    """Load users from JSON file."""
     try:
         if os.path.exists(USERS_DB_PATH):
             with open(USERS_DB_PATH, "r") as f:
@@ -161,7 +163,6 @@ def load_users_db():
     return {}
 
 def save_users_db(users):
-    """Save users to JSON file for persistence."""
     try:
         with open(USERS_DB_PATH, "w") as f:
             json.dump(users, f, indent=2)
@@ -169,10 +170,8 @@ def save_users_db(users):
     except Exception:
         return False
 
-# Load DB into session on first run
 if "users_db" not in st.session_state:
     st.session_state.users_db = load_users_db()
-
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "current_user" not in st.session_state:
@@ -186,6 +185,14 @@ def check_password(password: str, hashed: str) -> bool:
         return bcrypt.checkpw(password.encode(), hashed.encode())
     except Exception:
         return False
+
+def ensure_user_fields(user):
+    """Backfill Steel fields for older accounts."""
+    if "steel_balance" not in user:
+        user["steel_balance"] = 0
+    if "transactions" not in user:
+        user["transactions"] = []
+    return user
 
 def register_user(username, password, display_name):
     username = username.strip().lower()
@@ -201,6 +208,8 @@ def register_user(username, password, display_name):
         "display_name": display_name.strip() or username,
         "favorite_teams": [],
         "preferred_book": "DraftKings",
+        "steel_balance": 0,
+        "transactions": [],
         "created_at": datetime.now().isoformat()
     }
     save_users_db(st.session_state.users_db)
@@ -208,13 +217,15 @@ def register_user(username, password, display_name):
 
 def login_user(username, password):
     username = username.strip().lower()
-    # Reload from file in case another session saved
     st.session_state.users_db = load_users_db()
     user = st.session_state.users_db.get(username)
     if not user:
         return False, "User not found. Create an account first."
     if not check_password(password, user["password_hash"]):
         return False, "Incorrect password."
+    # Ensure Steel fields exist
+    st.session_state.users_db[username] = ensure_user_fields(user)
+    save_users_db(st.session_state.users_db)
     st.session_state.authenticated = True
     st.session_state.current_user = username
     return True, "Login successful."
@@ -226,7 +237,11 @@ def logout_user():
 def get_current_profile():
     if not st.session_state.current_user:
         return None
-    return st.session_state.users_db.get(st.session_state.current_user)
+    user = st.session_state.users_db.get(st.session_state.current_user)
+    if user:
+        user = ensure_user_fields(user)
+        st.session_state.users_db[st.session_state.current_user] = user
+    return user
 
 def update_profile(display_name, favorite_teams, preferred_book):
     username = st.session_state.current_user
@@ -238,6 +253,34 @@ def update_profile(display_name, favorite_teams, preferred_book):
         return True
     return False
 
+def purchase_steel(amount):
+    """Add Steel pack to account and record transaction. Demo purchase (no real payment)."""
+    username = st.session_state.current_user
+    if not username or username not in st.session_state.users_db:
+        return False, "You must be logged in to buy Steel."
+    if amount < 5 or amount % 5 != 0:
+        return False, "Steel packs must be in multiples of 5."
+    
+    user = ensure_user_fields(st.session_state.users_db[username])
+    cost = round(amount * STEEL_PRICE_USD, 2)
+    
+    user["steel_balance"] = user.get("steel_balance", 0) + amount
+    tx = {
+        "id": f"tx_{datetime.now().strftime('%Y%m%d%H%M%S')}_{amount}",
+        "type": "purchase",
+        "steel_amount": amount,
+        "usd_cost": cost,
+        "status": "completed",
+        "note": f"Purchased {amount} Steel pack",
+        "timestamp": datetime.now().isoformat()
+    }
+    user["transactions"] = user.get("transactions", [])
+    user["transactions"].insert(0, tx)  # newest first
+    
+    st.session_state.users_db[username] = user
+    save_users_db(st.session_state.users_db)
+    return True, f"Added {amount} Steel to your account! New balance: {user['steel_balance']} Steel"
+
 def get_team_history(team_name):
     if team_name in TEAM_HISTORY:
         return TEAM_HISTORY[team_name]
@@ -247,18 +290,21 @@ def get_team_history(team_name):
     return None
 
 # =====================================================
-# MAIN APP (always shown — no forced login)
+# SIDEBAR
 # =====================================================
 profile = get_current_profile()
 display_name = None
+steel_balance = 0
 if profile:
     display_name = profile.get("display_name", st.session_state.current_user)
+    steel_balance = profile.get("steel_balance", 0)
 elif st.session_state.current_user:
     display_name = st.session_state.current_user
 
 st.sidebar.markdown("# 🎯 FADE MACHINE")
 if display_name:
     st.sidebar.markdown(f"**Welcome, {display_name}**")
+    st.sidebar.markdown(f"⚙️ **Steel Balance: {steel_balance}**")
     if st.sidebar.button("Logout"):
         logout_user()
         st.rerun()
@@ -606,34 +652,14 @@ with tab6:
     - Preseason Week 1 games begin around August 13
     """)
 
+# =====================================================
+# PROFILE TAB — Account / Buy Steel / Transaction History
+# =====================================================
 with tab7:
-    st.header("👤 Profile & Account")
-    st.caption("Login is optional. Create an account to save preferences.")
+    st.header("👤 Profile & Steel")
     
-    if st.session_state.authenticated and get_current_profile():
-        current = get_current_profile()
-        st.success(f"Logged in as **{current.get('display_name')}**")
-        with st.form("profile_form"):
-            new_display = st.text_input("Display Name", value=current.get("display_name", ""))
-            new_teams = st.multiselect("Favorite NFL Teams", options=ALL_TEAMS, default=current.get("favorite_teams", []))
-            new_book = st.selectbox(
-                "Preferred Sportsbook",
-                options=list(BOOK_OPTIONS.keys()),
-                index=list(BOOK_OPTIONS.keys()).index(current.get("preferred_book", "DraftKings")) if current.get("preferred_book") in BOOK_OPTIONS else 0
-            )
-            if st.form_submit_button("Save Profile"):
-                if update_profile(new_display, new_teams, new_book):
-                    st.success("Profile saved to database!")
-                    st.rerun()
-        st.markdown("---")
-        st.write(f"**Username:** {st.session_state.current_user}")
-        st.write(f"**Preferred Book:** {current.get('preferred_book')}")
-        favs = current.get("favorite_teams", [])
-        st.write("**Favorite Teams:** " + (", ".join(favs) if favs else "None selected"))
-        if st.button("Logout"):
-            logout_user()
-            st.rerun()
-    else:
+    if not (st.session_state.authenticated and get_current_profile()):
+        st.caption("Create an account or log in to buy Steel and track transactions.")
         login_tab, register_tab = st.tabs(["Login", "Create Account"])
         with login_tab:
             with st.form("login_form"):
@@ -661,7 +687,83 @@ with tab7:
                             st.success(msg)
                         else:
                             st.error(msg)
-        st.caption("Accounts are saved in users_db.json for quick re-login.")
+    else:
+        current = get_current_profile()
+        steel_bal = current.get("steel_balance", 0)
+        
+        # Balance banner
+        st.markdown(f"""
+        <div style="border:1.5px solid #e10600; border-radius:12px; padding:16px; margin-bottom:16px; background:rgba(225,6,0,0.12);">
+          <div style="font-size:0.85rem; color:#aaaaaa;">STEEL BALANCE</div>
+          <div style="font-size:2rem; font-weight:700; color:#ffffff;">⚙️ {steel_bal} Steel</div>
+          <div style="font-size:0.8rem; color:#cccccc;">Logged in as {current.get('display_name')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        sub_account, sub_buy, sub_history = st.tabs(["Account", "Buy Steel", "Transaction History"])
+        
+        with sub_account:
+            st.subheader("Edit Profile")
+            with st.form("profile_form"):
+                new_display = st.text_input("Display Name", value=current.get("display_name", ""))
+                new_teams = st.multiselect("Favorite NFL Teams", options=ALL_TEAMS, default=current.get("favorite_teams", []))
+                new_book = st.selectbox(
+                    "Preferred Sportsbook",
+                    options=list(BOOK_OPTIONS.keys()),
+                    index=list(BOOK_OPTIONS.keys()).index(current.get("preferred_book", "DraftKings")) if current.get("preferred_book") in BOOK_OPTIONS else 0
+                )
+                if st.form_submit_button("Save Profile"):
+                    if update_profile(new_display, new_teams, new_book):
+                        st.success("Profile saved!")
+                        st.rerun()
+            st.markdown("---")
+            st.write(f"**Username:** {st.session_state.current_user}")
+            st.write(f"**Steel Balance:** {steel_bal}")
+            if st.button("Logout", key="profile_logout"):
+                logout_user()
+                st.rerun()
+        
+        with sub_buy:
+            st.subheader("⚙️ Buy Steel Packs")
+            st.caption("Purchase packs in multiples of 5. Demo mode — no real payment charged yet.")
+            
+            pack_amount = st.selectbox(
+                "Select Steel pack size",
+                options=STEEL_PACK_OPTIONS,
+                index=0,
+                format_func=lambda x: f"{x} Steel — ${x * STEEL_PRICE_USD:.2f}"
+            )
+            
+            cost = pack_amount * STEEL_PRICE_USD
+            st.markdown(f"**Selected:** {pack_amount} Steel for **${cost:.2f}**")
+            
+            if st.button(f"Purchase {pack_amount} Steel", type="primary"):
+                success, msg = purchase_steel(pack_amount)
+                if success:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+            
+            st.info("💡 Real payment processing (Stripe/PayPal) can be connected later. This is a simulated purchase for testing.")
+        
+        with sub_history:
+            st.subheader("Transaction History")
+            txs = current.get("transactions", [])
+            if not txs:
+                st.caption("No transactions yet. Buy a Steel pack to see history here.")
+            else:
+                rows = []
+                for t in txs:
+                    rows.append({
+                        "Date": t.get("timestamp", "")[:19].replace("T", " "),
+                        "Type": t.get("type", "").title(),
+                        "Steel": f"+{t.get('steel_amount', 0)}",
+                        "Cost (USD)": f"${t.get('usd_cost', 0):.2f}",
+                        "Status": t.get("status", "").title(),
+                        "Note": t.get("note", ""),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 st.markdown("---")
-st.caption("FADE MACHINE • No forced login • Optional account database • Mobile optimized")
+st.caption("FADE MACHINE • Steel currency • Transaction history • Mobile optimized")
