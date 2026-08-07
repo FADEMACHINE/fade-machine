@@ -88,6 +88,30 @@ st.markdown("""
     [data-testid="stMetricLabel"] {
         color: #cccccc !important;
     }
+    
+    /* Top-right Steel balance bar — black text, red border, light red bg */
+    .steel-balance-bar {
+        border: 2px solid #e10600;
+        border-radius: 10px;
+        background-color: rgba(225, 6, 0, 0.18);
+        padding: 10px 18px;
+        display: inline-block;
+        text-align: right;
+        min-width: 140px;
+    }
+    .steel-balance-bar .steel-label {
+        font-size: 0.7rem;
+        color: #000000 !important;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+    .steel-balance-bar .steel-amount {
+        font-size: 1.25rem;
+        color: #000000 !important;
+        font-weight: 700;
+        line-height: 1.3;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -148,8 +172,8 @@ TEAM_HISTORY = {
 # =====================================================
 # STEEL CURRENCY
 # =====================================================
-STEEL_PRICE_USD = 1.00  # Demo price: $1.00 per Steel
-STEEL_PACK_OPTIONS = list(range(5, 105, 5))  # 5, 10, 15 ... 100
+STEEL_PRICE_USD = 1.00
+STEEL_PACK_OPTIONS = [1, 5, 10, 25, 50, 100, 500, 1000]
 
 USERS_DB_PATH = "users_db.json"
 
@@ -187,7 +211,6 @@ def check_password(password: str, hashed: str) -> bool:
         return False
 
 def ensure_user_fields(user):
-    """Backfill Steel fields for older accounts."""
     if "steel_balance" not in user:
         user["steel_balance"] = 0
     if "transactions" not in user:
@@ -223,7 +246,6 @@ def login_user(username, password):
         return False, "User not found. Create an account first."
     if not check_password(password, user["password_hash"]):
         return False, "Incorrect password."
-    # Ensure Steel fields exist
     st.session_state.users_db[username] = ensure_user_fields(user)
     save_users_db(st.session_state.users_db)
     st.session_state.authenticated = True
@@ -254,12 +276,11 @@ def update_profile(display_name, favorite_teams, preferred_book):
     return False
 
 def purchase_steel(amount):
-    """Add Steel pack to account and record transaction. Demo purchase (no real payment)."""
     username = st.session_state.current_user
     if not username or username not in st.session_state.users_db:
         return False, "You must be logged in to buy Steel."
-    if amount < 5 or amount % 5 != 0:
-        return False, "Steel packs must be in multiples of 5."
+    if amount not in STEEL_PACK_OPTIONS:
+        return False, "Invalid pack size."
     
     user = ensure_user_fields(st.session_state.users_db[username])
     cost = round(amount * STEEL_PRICE_USD, 2)
@@ -275,7 +296,7 @@ def purchase_steel(amount):
         "timestamp": datetime.now().isoformat()
     }
     user["transactions"] = user.get("transactions", [])
-    user["transactions"].insert(0, tx)  # newest first
+    user["transactions"].insert(0, tx)
     
     st.session_state.users_db[username] = user
     save_users_db(st.session_state.users_db)
@@ -304,7 +325,7 @@ elif st.session_state.current_user:
 st.sidebar.markdown("# 🎯 FADE MACHINE")
 if display_name:
     st.sidebar.markdown(f"**Welcome, {display_name}**")
-    st.sidebar.markdown(f"⚙️ **Steel Balance: {steel_balance}**")
+    st.sidebar.markdown(f"⚙️ **Steel: {steel_balance}**")
     if st.sidebar.button("Logout"):
         logout_user()
         st.rerun()
@@ -525,8 +546,24 @@ BOOK_OPTIONS = {
 }
 ALL_TEAMS = sorted(list(TEAM_HISTORY.keys()))
 
-st.title("🎯 FADE MACHINE")
-st.caption("NFL Historical Trends • Live Odds • Final Scores & Bet Results")
+# =====================================================
+# HEADER: Title left + Steel balance bar top-right
+# =====================================================
+header_left, header_right = st.columns([3, 1])
+with header_left:
+    st.title("🎯 FADE MACHINE")
+    st.caption("NFL Historical Trends • Live Odds • Final Scores & Bet Results")
+with header_right:
+    # Always-visible balance bar (top right)
+    bal_display = steel_balance if profile else 0
+    st.markdown(f"""
+    <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+      <div class="steel-balance-bar">
+        <div class="steel-label">⚙️ Steel Balance</div>
+        <div class="steel-amount">{bal_display}</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🔴 HOF Game", "📈 Live Odds", "✅ Results", "📅 Preseason",
@@ -652,9 +689,6 @@ with tab6:
     - Preseason Week 1 games begin around August 13
     """)
 
-# =====================================================
-# PROFILE TAB — Account / Buy Steel / Transaction History
-# =====================================================
 with tab7:
     st.header("👤 Profile & Steel")
     
@@ -691,7 +725,6 @@ with tab7:
         current = get_current_profile()
         steel_bal = current.get("steel_balance", 0)
         
-        # Balance banner
         st.markdown(f"""
         <div style="border:1.5px solid #e10600; border-radius:12px; padding:16px; margin-bottom:16px; background:rgba(225,6,0,0.12);">
           <div style="font-size:0.85rem; color:#aaaaaa;">STEEL BALANCE</div>
@@ -725,12 +758,12 @@ with tab7:
         
         with sub_buy:
             st.subheader("⚙️ Buy Steel Packs")
-            st.caption("Purchase packs in multiples of 5. Demo mode — no real payment charged yet.")
+            st.caption("Choose a pack size. Demo mode — no real payment charged yet.")
             
             pack_amount = st.selectbox(
                 "Select Steel pack size",
                 options=STEEL_PACK_OPTIONS,
-                index=0,
+                index=1,
                 format_func=lambda x: f"{x} Steel — ${x * STEEL_PRICE_USD:.2f}"
             )
             
@@ -766,4 +799,4 @@ with tab7:
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 st.markdown("---")
-st.caption("FADE MACHINE • Steel currency • Transaction history • Mobile optimized")
+st.caption("FADE MACHINE • Steel packs: 1 · 5 · 10 · 25 · 50 · 100 · 500 · 1000")
