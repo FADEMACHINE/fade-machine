@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 from datetime import datetime
 import bcrypt
-import json
 
 st.set_page_config(
     page_title="FADE MACHINE | NFL Analytics",
@@ -60,11 +59,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================
+# COMPLETED GAMES (top-level so sidebar can access it)
+# =====================================================
+COMPLETED_GAMES = [
+    {
+        "id": "hof_2026",
+        "label": "HOF Game — CAR @ ARI (Aug 6)",
+        "away": "Carolina Panthers",
+        "home": "Arizona Cardinals",
+        "away_score": 33,
+        "home_score": 30,
+        "final": "CAR 33 – ARI 30",
+        "status": "FINAL",
+        "date": "Thu Aug 6, 2026",
+        "note": "Haynes King walk-off rushing TD as time expired",
+        "spread_line": -1.5,
+        "spread_favorite": "Carolina Panthers",
+        "total_line": 35.5,
+        "ml_favorite": "Carolina Panthers",
+    }
+]
+
+# =====================================================
 # USER AUTHENTICATION SYSTEM
 # =====================================================
-
-# In-memory user store (works for current session).
-# Later we can connect Supabase / Firebase for permanent storage.
 if "users_db" not in st.session_state:
     st.session_state.users_db = {}
 
@@ -130,9 +148,6 @@ def update_profile(display_name, favorite_teams, preferred_book):
         return True
     return False
 
-# =====================================================
-# LOGIN / REGISTER UI
-# =====================================================
 def show_auth_page():
     st.title("🎯 FADE MACHINE")
     st.caption("NFL Analytics • Live Odds • Historical Trends")
@@ -175,14 +190,10 @@ def show_auth_page():
     st.markdown("---")
     st.caption("FADE MACHINE • Black • White • Grey • Red")
 
-# =====================================================
-# MAIN APP (only shown after login)
-# =====================================================
 def show_main_app():
     profile = get_current_profile()
     display_name = profile.get("display_name", st.session_state.current_user) if profile else st.session_state.current_user
     
-    # Sidebar
     st.sidebar.markdown("# 🎯 FADE MACHINE")
     st.sidebar.markdown(f"**Welcome, {display_name}**")
     st.sidebar.markdown("---")
@@ -195,7 +206,6 @@ def show_main_app():
     st.sidebar.info("Analytical tool only — research & education.")
     st.sidebar.caption("Brand: Black • White • Grey • Red")
     
-    # Game filter
     st.sidebar.markdown("### 🔍 Game Filter")
     all_game_labels = [g["label"] for g in COMPLETED_GAMES] + ["Upcoming / Live Games"]
     selected_games = st.sidebar.multiselect(
@@ -204,28 +214,6 @@ def show_main_app():
         default=all_game_labels,
         help="Choose which completed or upcoming games to display"
     )
-    
-    # =====================================================
-    # DATA
-    # =====================================================
-    COMPLETED_GAMES = [
-        {
-            "id": "hof_2026",
-            "label": "HOF Game — CAR @ ARI (Aug 6)",
-            "away": "Carolina Panthers",
-            "home": "Arizona Cardinals",
-            "away_score": 33,
-            "home_score": 30,
-            "final": "CAR 33 – ARI 30",
-            "status": "FINAL",
-            "date": "Thu Aug 6, 2026",
-            "note": "Haynes King walk-off rushing TD as time expired",
-            "spread_line": -1.5,
-            "spread_favorite": "Carolina Panthers",
-            "total_line": 35.5,
-            "ml_favorite": "Carolina Panthers",
-        }
-    ]
     
     TEAM_HISTORY = {
         "Arizona Cardinals": {"ats": "44-42-0", "cover_pct": 51.2, "ou": "~51% Over", "note": "Near league average ATS"},
@@ -478,7 +466,6 @@ def show_main_app():
         "👤 Profile"
     ])
     
-    # ---- HOF Game ----
     with tab1:
         if "HOF Game — CAR @ ARI (Aug 6)" in selected_games:
             st.header("Hall of Fame Game — FINAL")
@@ -516,7 +503,6 @@ def show_main_app():
         else:
             st.info("HOF Game is currently filtered out. Use the sidebar filter to show it.")
     
-    # ---- Live Odds ----
     with tab2:
         if "Upcoming / Live Games" in selected_games:
             st.header("Live Odds — Upcoming Games")
@@ -548,7 +534,6 @@ def show_main_app():
         else:
             st.info("Upcoming games are currently filtered out.")
     
-    # ---- Results & Bets ----
     with tab3:
         st.header("Completed Games — Scores & Bet Results")
         st.caption("Shows which bets would have HIT or MISS based on the lines we tracked")
@@ -574,13 +559,11 @@ def show_main_app():
         if not shown:
             st.info("No completed games selected in the filter.")
     
-    # ---- Preseason ----
     with tab4:
         st.header("Preseason Schedule")
         st.write("HOF Game is complete. Next preseason games begin around Aug 13.")
         st.caption("Use the Live Odds tab once books post new lines.")
     
-    # ---- Trends ----
     with tab5:
         st.header("Historical ATS & O/U Trends (All 32 Teams)")
         st.caption("Primary window: 2021–2025 regular seasons")
@@ -596,7 +579,6 @@ def show_main_app():
         df = pd.DataFrame(rows).sort_values("Cover %", ascending=False)
         st.dataframe(df, use_container_width=True, hide_index=True)
     
-    # ---- Headlines ----
     with tab6:
         st.header("Preseason Headlines")
         st.write("""
@@ -605,7 +587,6 @@ def show_main_app():
         - Preseason Week 1 games begin around August 13
         """)
     
-    # ---- PROFILE TAB ----
     with tab7:
         st.header("👤 Your Profile")
         st.caption("Edit your display name, favorite teams, and preferred sportsbook")
