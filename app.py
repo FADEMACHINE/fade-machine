@@ -78,8 +78,7 @@ COMPLETED_GAMES = [
         "status": "FINAL",
         "date": "Thu Aug 6, 2026",
         "note": "Haynes King walk-off rushing TD as time expired",
-        # Closing-style lines we tracked
-        "spread_line": -1.5,          # Panthers -1.5
+        "spread_line": -1.5,
         "spread_favorite": "Carolina Panthers",
         "total_line": 35.5,
         "ml_favorite": "Carolina Panthers",
@@ -90,19 +89,15 @@ def evaluate_bets(game):
     """Return hit/miss for Spread, Total, Moneyline."""
     away_score = game["away_score"]
     home_score = game["home_score"]
-    margin = away_score - home_score   # positive = away won
+    margin = away_score - home_score
     total_pts = away_score + home_score
 
-    # Spread (Panthers were -1.5)
-    # Away (CAR) is favorite at -1.5
     spread_result = "HIT" if margin > 1.5 else "MISS"
     spread_detail = f"CAR -1.5 → actual margin {margin:+d} → {'Cover' if margin > 1.5 else 'No cover'}"
 
-    # Total
     total_result = "HIT (Over)" if total_pts > game["total_line"] else ("HIT (Under)" if total_pts < game["total_line"] else "PUSH")
     total_detail = f"Total {game['total_line']} → actual {total_pts} → {total_result}"
 
-    # Moneyline
     ml_result = "HIT" if away_score > home_score else "MISS"
     ml_detail = f"CAR ML → CAR won {away_score}-{home_score}"
 
@@ -427,7 +422,6 @@ with tab2:
             for g in odds_data:
                 away = g.get("away_team", "")
                 home = g.get("home_team", "")
-                # Skip already completed HOF if it still appears
                 teams = (away + home).lower()
                 if "panther" in teams and "cardinal" in teams:
                     continue
@@ -456,8 +450,8 @@ with tab3:
         if game["label"] in selected_games:
             shown = True
             st.subheader(game["label"])
-            st.markdown(f"**{game['final']}**  
-{game['note']}")
+            st.markdown(f"**{game['final']}**")
+            st.caption(game["note"])
             
             results = evaluate_bets(game)
             
