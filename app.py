@@ -89,7 +89,7 @@ st.markdown("""
         color: #cccccc !important;
     }
     
-    /* Top-right Steel balance bar — black text, red border, light red bg */
+    /* Top-right Steel balance bar — white text, red border, light red bg */
     .steel-balance-bar {
         border: 2px solid #e10600;
         border-radius: 10px;
@@ -101,14 +101,14 @@ st.markdown("""
     }
     .steel-balance-bar .steel-label {
         font-size: 0.7rem;
-        color: #000000 !important;
+        color: #ffffff !important;
         font-weight: 600;
         letter-spacing: 0.5px;
         text-transform: uppercase;
     }
     .steel-balance-bar .steel-amount {
         font-size: 1.25rem;
-        color: #000000 !important;
+        color: #ffffff !important;
         font-weight: 700;
         line-height: 1.3;
     }
@@ -169,9 +169,6 @@ TEAM_HISTORY = {
     "Washington Commanders": {"ats": "40-44-4", "cover_pct": 47.6, "home_ats": "20-22", "away_ats": "20-22", "fav_ats": "14-18", "dog_ats": "26-26", "ou": "Over lean recently", "note": "Slightly below average"},
 }
 
-# =====================================================
-# STEEL CURRENCY
-# =====================================================
 STEEL_PRICE_USD = 1.00
 STEEL_PACK_OPTIONS = [1, 5, 10, 25, 50, 100, 500, 1000]
 
@@ -310,9 +307,6 @@ def get_team_history(team_name):
             return val
     return None
 
-# =====================================================
-# SIDEBAR
-# =====================================================
 profile = get_current_profile()
 display_name = None
 steel_balance = 0
@@ -546,15 +540,11 @@ BOOK_OPTIONS = {
 }
 ALL_TEAMS = sorted(list(TEAM_HISTORY.keys()))
 
-# =====================================================
-# HEADER: Title left + Steel balance bar top-right
-# =====================================================
 header_left, header_right = st.columns([3, 1])
 with header_left:
     st.title("🎯 FADE MACHINE")
     st.caption("NFL Historical Trends • Live Odds • Final Scores & Bet Results")
 with header_right:
-    # Always-visible balance bar (top right)
     bal_display = steel_balance if profile else 0
     st.markdown(f"""
     <div style="display:flex; justify-content:flex-end; margin-top:12px;">
