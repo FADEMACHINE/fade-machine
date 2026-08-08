@@ -6,7 +6,7 @@ import streamlit as st
 
 SEASON_LONG_PATH = "season_long_futures.json"
 
-# Stat columns for ranking (high → low)
+# Stat columns for ranking (high → low) — season-long futures props
 STAT_RANK_OPTIONS = {
     "Receiving Yards": "rec_yds",
     "Rushing Yards": "rush_yds",
@@ -17,6 +17,9 @@ STAT_RANK_OPTIONS = {
     "Receiving TDs": "rec_tds",
     "Total TDs (Rush+Rec+Pass)": "total_tds",
     "Interceptions": "pass_ints",
+    "Completions": "pass_cmp",
+    "Targets": "targets",
+    "Rush Attempts": "rush_att",
     "Total Yards (Pass+Rush+Rec)": "total_yds",
 }
 
@@ -46,13 +49,22 @@ SCORING_MODELS = {
         "pass_yds": 0.04, "pass_tds": 4.0, "pass_ints": -2.0,
         "rush_yds": 0.1, "rush_tds": 6.0,
         "rec_yds": 0.1, "receptions": 0.5, "rec_tds": 6.0,
-        "te_rec_bonus": 1.0,  # extra +1 per TE reception
+        "te_rec_bonus": 1.0,  # extra +1 per TE reception → 1.5 total
     },
     "Superflex / 2QB lean": {
         "pass_yds": 0.04, "pass_tds": 4.0, "pass_ints": -1.0,
         "rush_yds": 0.1, "rush_tds": 6.0,
         "rec_yds": 0.1, "receptions": 0.5, "rec_tds": 6.0,
         "qb_bonus": 1.15,  # multiply QB pts
+    },
+    "PPR + Bonus (100 yd)": {
+        "pass_yds": 0.04, "pass_tds": 4.0, "pass_ints": -2.0,
+        "rush_yds": 0.1, "rush_tds": 6.0,
+        "rec_yds": 0.1, "receptions": 1.0, "rec_tds": 6.0,
+        # yardage bonuses applied in calc
+        "bonus_100_rush": 3.0,
+        "bonus_100_rec": 3.0,
+        "bonus_300_pass": 3.0,
     },
 }
 
@@ -92,7 +104,7 @@ def calc_season_fantasy_pts(player, model_name):
     model = SCORING_MODELS.get(model_name, SCORING_MODELS["Half-PPR"])
     pts = 0.0
     for key, mult in model.items():
-        if key in ("te_rec_bonus", "qb_bonus"):
+        if key in ("te_rec_bonus", "qb_bonus", "bonus_100_rush", "bonus_100_rec", "bonus_300_pass"):
             continue
         val = player.get(key)
         if val is None:
@@ -108,6 +120,19 @@ def calc_season_fantasy_pts(player, model_name):
     # Superflex QB boost
     if model.get("qb_bonus") and player.get("pos") == "QB":
         pts *= float(model["qb_bonus"])
+    # Yardage bonuses (PPR + Bonus model)
+    if model.get("bonus_100_rush"):
+        ry = player.get("rush_yds") or 0
+        if float(ry) >= 1000:  # season scale approximation for ~100/game
+            pts += float(model["bonus_100_rush"]) * 10  # rough season bonus
+    if model.get("bonus_100_rec"):
+        rcy = player.get("rec_yds") or 0
+        if float(rcy) >= 1000:
+            pts += float(model["bonus_100_rec"]) * 8
+    if model.get("bonus_300_pass"):
+        py = player.get("pass_yds") or 0
+        if float(py) >= 3000:
+            pts += float(model["bonus_300_pass"]) * 10
     return round(pts, 1)
 
 
@@ -150,11 +175,14 @@ def season_model_rankings(players, model_name, pos_filter="All"):
             "Pass Yds": pl.get("pass_yds"),
             "Pass TD": pl.get("pass_tds"),
             "INT": pl.get("pass_ints"),
+            "Cmp": pl.get("pass_cmp"),
             "Rush Yds": pl.get("rush_yds"),
             "Rush TD": pl.get("rush_tds"),
+            "Rush Att": pl.get("rush_att"),
             "Rec": pl.get("receptions"),
             "Rec Yds": pl.get("rec_yds"),
             "Rec TD": pl.get("rec_tds"),
+            "Targets": pl.get("targets"),
             "Total Yds": pl.get("total_yds"),
             "Total TD": pl.get("total_tds"),
         })
@@ -178,7 +206,7 @@ def render_fantasy_tab(game_props=None):
         st.warning("season_long_futures.json not found or empty. Redeploy so the file is on the server.")
         return
 
-    st.info(f"**{season} season-long futures** loaded · {len(players)} players · Lines are projection midpoints for ranking")
+    st.info(f"**{season} season-long futures** loaded · **{len(players)} players** · Lines are projection midpoints for ranking")
 
     sub_overall, sub_by_stat, sub_models, sub_game = st.tabs([
         "Season Overall", "Rank by Prop Stat", "Scoring Models", "Game Props (weekly)"
@@ -195,7 +223,7 @@ def render_fantasy_tab(game_props=None):
     # ---- Rank by individual prop (user request) ----
     with sub_by_stat:
         st.subheader("Rank players by season-long prop")
-        st.caption("Receiving yards · Rushing yards · Catches · Passing yards · Touchdowns · more")
+        st.caption("Receiving yards · Rushing yards · Catches · Passing yards · Touchdowns · Completions · Targets · more")
         stat_label = st.selectbox("Prop / Stat", list(STAT_RANK_OPTIONS.keys()), key="ff_stat_pick")
         stat_key = STAT_RANK_OPTIONS[stat_label]
         pos2 = st.selectbox("Position filter", ["All", "QB", "RB", "WR", "TE"], key="ff_stat_pos")
@@ -211,8 +239,8 @@ def render_fantasy_tab(game_props=None):
 
         # Quick multi-stat leaderboard strip
         st.markdown("---")
-        st.markdown("**Leaders snapshot**")
-        cols = st.columns(3)
+        st.markdown("**Leaders snapshot (season-long)**")
+        cols = st.columns(4)
         highlights = [
             ("Receiving Yards", "rec_yds"),
             ("Rushing Yards", "rush_yds"),
@@ -220,10 +248,12 @@ def render_fantasy_tab(game_props=None):
             ("Receptions", "receptions"),
             ("Total TDs", "total_tds"),
             ("Total Yards", "total_yds"),
+            ("Targets", "targets"),
+            ("Completions", "pass_cmp"),
         ]
         for i, (label, key) in enumerate(highlights):
             d = rank_by_stat(players, key)
-            with cols[i % 3]:
+            with cols[i % 4]:
                 if not d.empty:
                     st.metric(label, f"{d.iloc[0]['Player']}", f"{d.iloc[0]['Line / Proj']}")
 
@@ -246,13 +276,28 @@ def render_fantasy_tab(game_props=None):
             st.markdown("""
             | Model | Notes |
             |-------|--------|
-            | Half-PPR | 0.5 pts/catch (default) |
+            | Half-PPR | 0.5 pts/catch (default most leagues) |
             | Full-PPR | 1.0 pts/catch |
             | Standard | 0 pts/catch |
-            | 6-pt Pass TD | Pass TDs worth 6 |
+            | 6-pt Pass TD | Pass TDs worth 6 (vs standard 4) |
             | TE Premium | TE catches +1.5 each |
             | Superflex | QB points × 1.15 |
+            | PPR + Bonus | Full-PPR + yardage bonuses |
             """)
+
+        st.markdown("---")
+        st.subheader("Side-by-side model rankings (Top 15)")
+        model_a = st.selectbox("Model A", list(SCORING_MODELS.keys()), index=0, key="ff_side_a")
+        model_b = st.selectbox("Model B", list(SCORING_MODELS.keys()), index=1, key="ff_side_b")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**{model_a}**")
+            st.dataframe(season_model_rankings(players, model_a).head(15)[["Rank", "Player", "Pos", "Proj Pts"]],
+                         use_container_width=True, hide_index=True)
+        with c2:
+            st.markdown(f"**{model_b}**")
+            st.dataframe(season_model_rankings(players, model_b).head(15)[["Rank", "Player", "Pos", "Proj Pts"]],
+                         use_container_width=True, hide_index=True)
 
     # ---- Optional weekly game props rankings ----
     with sub_game:
@@ -261,7 +306,6 @@ def render_fantasy_tab(game_props=None):
             st.caption("No game-level props loaded. Season-long rankings above are the primary model.")
             return
         st.caption("Built from single-game O/U lines when available")
-        # Simple aggregate from game props if present
         by_p = {}
         for p in game_props:
             name = p.get("player", "?")
