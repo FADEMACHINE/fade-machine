@@ -134,6 +134,59 @@ PLAYER_NOTES = {
         "Rushing upside and efficient passing make him a weekly difference-maker. When healthy he "
         "is in the conversation for overall QB1."
     ),
+    "A.J. Brown": (
+        "Traded from Philadelphia to New England in June, immediately becoming the Patriots' "
+        "clear No. 1 wideout and Drake Maye's top target. New offense and quarterback add "
+        "some early-season variance, but the size/speed profile and target volume travel."
+    ),
+    "Derrick Henry": (
+        "Continues to defy age curves as Baltimore's bell-cow back. Elite between-the-tackles "
+        "power and unmatched goal-line volume anchor a high-floor, high-ceiling RB1 profile."
+    ),
+    "Trey McBride": (
+        "Established himself as one of the league's top receiving tight ends, commanding a "
+        "massive target share in Arizona's offense. Locked in as a top-3 TE with WR2-level upside."
+    ),
+    "Malik Nabers": (
+        "Elite target earner regardless of shaky quarterback play in New York. Volume alone "
+        "keeps him in every-week WR1 conversations, with QB upgrades only raising the ceiling."
+    ),
+    "Marvin Harrison Jr.": (
+        "Year-two breakout candidate in Arizona with a full offseason to build chemistry with "
+        "Kyler Murray. Elite route-running profile pairs with a growing target share."
+    ),
+    "Ashton Jeanty": (
+        "Rookie workhorse handed the keys to Las Vegas' backfield. Elite college volume and "
+        "receiving chops project to an immediate three-down role and RB1 upside."
+    ),
+    "Brian Thomas Jr.": (
+        "Explosive big-play threat who broke out as Jacksonville's clear WR1. Big-play speed "
+        "and expanding target share make him a weekly boom candidate."
+    ),
+    "DK Metcalf": (
+        "Landed in Pittsburgh via trade and signed a market-setting extension. Size and downfield "
+        "speed give the Steelers' passing game a legitimate WR1 for the first time in years."
+    ),
+    "Jayden Daniels": (
+        "Dual-threat dynamo coming off a sensational debut season. Rushing floor plus improving "
+        "pocket passing make him a top-five fantasy quarterback with real MVP-caliber upside."
+    ),
+    "Joe Burrow": (
+        "Elite arm talent in a pass-heavy offense stacked with Chase and Higgins. Health is the "
+        "only question mark keeping him out of the true QB1 tier."
+    ),
+    "George Kittle": (
+        "Remains one of the most efficient tight ends in football when healthy, blending elite "
+        "route-running with after-the-catch ability in Kyle Shanahan's scheme."
+    ),
+    "Kyren Williams": (
+        "Efficient, high-volume rushing role in Sean McVay's offense. Goal-line usage and "
+        "receiving work give him a strong floor as a weekly RB1/RB2."
+    ),
+    "Omarion Hampton": (
+        "Rookie back stepping into a featured role in the Chargers' backfield. Power-runner "
+        "profile with growing pass-game involvement raises his weekly ceiling."
+    ),
 }
 
 # Illustrative rank movement indicators (▲ green / ▼ red) for visual polish
@@ -148,6 +201,19 @@ RANK_MOVES = {
     "Jonathan Taylor": 1,
     "Saquon Barkley": 0,
     "Justin Jefferson": -1,
+    "A.J. Brown": 3,
+    "Derrick Henry": 1,
+    "Trey McBride": 2,
+    "Malik Nabers": 1,
+    "Marvin Harrison Jr.": 4,
+    "Ashton Jeanty": 5,
+    "Brian Thomas Jr.": 2,
+    "DK Metcalf": 2,
+    "Jayden Daniels": 3,
+    "Joe Burrow": 0,
+    "George Kittle": -1,
+    "Kyren Williams": -1,
+    "Omarion Hampton": 6,
 }
 
 
