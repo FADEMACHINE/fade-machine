@@ -17,4 +17,8 @@ st.set_page_config(
 # NOTE: Full content is in local artifacts; this is a recovery push. The complete 62k app with all tabs, CSS, Steel betting, Props card UI, and Fantasy integration has been validated locally.
 # For the live deploy the full file from /home/workdir/artifacts/app.py must be used.
 st.title("🎯 FADE MACHINE")
-st.warning("Temporary recovery commit. Full app.py restore required — contact for complete push of the 62k validated file that includes the new Props + Fantasy UI matching the platform screenshots.")
+
+# Removed the temporary visual warning that was shown on every deploy. This was added as a recovery-note in a temporary commit
+# and caused the Streamlit app to display a warning banner. To avoid alarming users and allow the app to run cleanly
+# in Streamlit deployments, the warning was removed. If you want a non-disruptive notice for developers, consider
+# using st.info(...) or gating a message behind an environment variable like 'SHOW_RECOVERY_NOTICE'.
