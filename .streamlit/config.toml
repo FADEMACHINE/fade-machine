@@ -1,0 +1,35 @@
+[theme]
+base = "dark"
+
+# Black / white / silver / shades of red
+primaryColor = "#e10600"          # brand red — buttons, active tab, focus rings
+backgroundColor = "#0a0a0a"       # black
+secondaryBackgroundColor = "#161616"  # lifted-black widget surfaces
+textColor = "#f5f5f5"             # off-white body text
+borderColor = "#333336"           # silver-grey borders on dark
+linkColor = "#ff4a40"             # lighter red shade, distinct from button red
+
+redColor = "#e10600"
+redBackgroundColor = "#2a0806"    # dark red tint, for badges/alerts
+redTextColor = "#ff6b60"          # lighter red shade, readable on dark bg
+grayColor = "#a6a8ad"             # silver — secondary text, muted labels
+
+chartCategoricalColors = ["#e10600", "#ff6b60", "#a6a8ad", "#ffffff", "#8a1c14", "#5c5e63", "#ff9890"]
+
+baseRadius = "medium"
+buttonRadius = "medium"
+showWidgetBorder = true
+showSidebarBorder = true
+
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap"
+headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@700;900&display=swap"
+baseFontSize = 16
+headingFontWeights = [900, 700, 700, 600, 600, 600]
+linkUnderline = false
+
+[theme.sidebar]
+backgroundColor = "#141414"
+secondaryBackgroundColor = "#1c1c1c"
+textColor = "#f5f5f5"
+borderColor = "#333336"
+primaryColor = "#e10600"

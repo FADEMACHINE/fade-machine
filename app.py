@@ -476,6 +476,108 @@ MARKET_LABEL = {
     "player_reception_tds": "Rec TDs",
 }
 
+# ---- Live NFL game odds (The Odds API) ----
+ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
+ODDS_API_TTL_SECONDS = 2 * 60 * 60  # free tier is ~500 credits/month — don't refetch every reload
+PREFERRED_BOOKMAKERS = ["draftkings", "fanduel", "betmgm", "caesars", "espnbet"]
+BOOKS_PER_GAME = 4
+
+def get_odds_api_key():
+    try:
+        return st.secrets.get("ODDS_API_KEY")
+    except Exception:
+        return None
+
+@st.cache_data(ttl=ODDS_API_TTL_SECONDS, show_spinner="Loading live NFL odds...")
+def fetch_nfl_odds_raw(api_key):
+    resp = requests.get(
+        ODDS_API_URL,
+        params={
+            "apiKey": api_key,
+            "regions": "us",
+            "markets": "h2h,spreads,totals",
+            "oddsFormat": "american",
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def parse_odds_games(raw_games):
+    games = []
+    for g in raw_games or []:
+        away, home = g.get("away_team", ""), g.get("home_team", "")
+        books = []
+        for bm in g.get("bookmakers", []):
+            entry = {"key": bm.get("key"), "title": bm.get("title") or bm.get("key") or "Book"}
+            for mkt in bm.get("markets", []):
+                mkey = mkt.get("key")
+                outcomes = mkt.get("outcomes", [])
+                if mkey == "h2h":
+                    h2h = {}
+                    for o in outcomes:
+                        if o.get("name") == home:
+                            h2h["home"] = o.get("price")
+                        elif o.get("name") == away:
+                            h2h["away"] = o.get("price")
+                    if "home" in h2h and "away" in h2h:
+                        entry["h2h"] = h2h
+                elif mkey == "spreads":
+                    sp = {}
+                    for o in outcomes:
+                        side = "home" if o.get("name") == home else "away" if o.get("name") == away else None
+                        if side:
+                            sp[side] = {"price": o.get("price"), "point": o.get("point")}
+                    if "home" in sp and "away" in sp:
+                        entry["spreads"] = sp
+                elif mkey == "totals":
+                    tot = {}
+                    for o in outcomes:
+                        name = (o.get("name") or "").lower()
+                        if name in ("over", "under"):
+                            tot[name] = {"price": o.get("price"), "point": o.get("point")}
+                    if "over" in tot and "under" in tot:
+                        entry["totals"] = tot
+            if any(k in entry for k in ("h2h", "spreads", "totals")):
+                books.append(entry)
+        books.sort(key=lambda b: PREFERRED_BOOKMAKERS.index(b["key"]) if b["key"] in PREFERRED_BOOKMAKERS else len(PREFERRED_BOOKMAKERS))
+        games.append({
+            "id": g.get("id"),
+            "away": away,
+            "home": home,
+            "commence_time": g.get("commence_time", ""),
+            "books": books[:BOOKS_PER_GAME],
+        })
+    games.sort(key=lambda g: g["commence_time"])
+    return games
+
+def load_nfl_betting_board():
+    """Returns (games, error). error is None on success, else a short reason code/message."""
+    api_key = get_odds_api_key()
+    if not api_key:
+        return None, "missing_key"
+    try:
+        raw = fetch_nfl_odds_raw(api_key)
+    except requests.exceptions.RequestException as e:
+        detail = str(e).replace(api_key, "***")
+        return None, f"The Odds API request failed: {detail}"
+    except Exception as e:
+        detail = str(e).replace(api_key, "***")
+        return None, f"Unexpected error loading odds: {detail}"
+    return parse_odds_games(raw), None
+
+def fmt_odds(price):
+    if price is None:
+        return "—"
+    return f"+{price}" if price > 0 else str(price)
+
+def fmt_kickoff(iso_ts):
+    try:
+        dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        return dt.strftime("%a %b %d, %I:%M %p UTC")
+    except Exception:
+        return iso_ts or "TBD"
+
 # Users / Steel system
 USERS_DB_PATH = "users_db.json"
 STEEL_STAKE_OPTIONS = [10, 25, 50, 100, 250, 500]
@@ -654,6 +756,89 @@ def render_prop_bet_ui(prop, key_prefix, use_expander=True):
     else:
         _body()
 
+def render_game_bet_ui(game, key_prefix, use_expander=True):
+    """Place Steel on a game's moneyline, spread, or total — mirrors render_prop_bet_ui."""
+    def _body():
+        if not st.session_state.get("authenticated"):
+            st.warning("Log in via Profile to place Steel bets on game lines.")
+            return
+        books = [b for b in game["books"] if any(k in b for k in ("h2h", "spreads", "totals"))]
+        if not books:
+            st.caption("No sportsbook lines available for this game.")
+            return
+        bal = get_current_profile().get("steel_balance", 0) if get_current_profile() else 0
+        st.caption(f"Available: {bal} Steel")
+
+        market_labels = []
+        if any("h2h" in b for b in books):
+            market_labels.append("Moneyline")
+        if any("spreads" in b for b in books):
+            market_labels.append("Spread")
+        if any("totals" in b for b in books):
+            market_labels.append("Total")
+
+        bet_type = st.radio("Market", market_labels, key=f"{key_prefix}_type", horizontal=True)
+        mkey = {"Moneyline": "h2h", "Spread": "spreads", "Total": "totals"}[bet_type]
+        book_choices = [b["title"] for b in books if mkey in b]
+        book_title = st.selectbox("Sportsbook", book_choices, key=f"{key_prefix}_book")
+        book = next(b for b in books if b["title"] == book_title)
+
+        if bet_type == "Moneyline":
+            side = st.radio(
+                "Side", ["away", "home"],
+                format_func=lambda s: f"{game['away']} ({fmt_odds(book['h2h']['away'])})" if s == "away" else f"{game['home']} ({fmt_odds(book['h2h']['home'])})",
+                horizontal=True, key=f"{key_prefix}_side",
+            )
+            odds_val = book["h2h"][side]
+            line_val = None
+            selection = game["away"] if side == "away" else game["home"]
+        elif bet_type == "Spread":
+            side = st.radio(
+                "Side", ["away", "home"],
+                format_func=lambda s: f"{game['away']} ({book['spreads']['away']['point']:+g}, {fmt_odds(book['spreads']['away']['price'])})" if s == "away" else f"{game['home']} ({book['spreads']['home']['point']:+g}, {fmt_odds(book['spreads']['home']['price'])})",
+                horizontal=True, key=f"{key_prefix}_side",
+            )
+            odds_val = book["spreads"][side]["price"]
+            line_val = book["spreads"][side]["point"]
+            selection = game["away"] if side == "away" else game["home"]
+        else:
+            side = st.radio(
+                "Side", ["over", "under"],
+                format_func=lambda s: f"OVER {book['totals']['over']['point']} ({fmt_odds(book['totals']['over']['price'])})" if s == "over" else f"UNDER {book['totals']['under']['point']} ({fmt_odds(book['totals']['under']['price'])})",
+                horizontal=True, key=f"{key_prefix}_side",
+            )
+            odds_val = book["totals"][side]["price"]
+            line_val = book["totals"][side]["point"]
+            selection = side
+
+        stake = st.selectbox("Stake (Steel)", STEEL_STAKE_OPTIONS, index=1, key=f"{key_prefix}_stake")
+        try:
+            profit = american_to_profit(stake, odds_val)
+            st.write(f"To win: **{profit}** Steel")
+        except Exception:
+            profit = 0
+
+        if st.button("Confirm Bet", key=f"{key_prefix}_btn"):
+            line_txt = f" {line_val:+g}" if line_val is not None else ""
+            label = f"{game['away']} @ {game['home']} — {bet_type} {selection}{line_txt} ({book_title})"
+            ok, msg = place_steel_bet(
+                game_id=game["id"], away=game["away"], home=game["home"],
+                market=bet_type, selection=selection, line=line_val,
+                odds=odds_val, stake=stake, label=label,
+                market_type=bet_type.lower(),
+            )
+            if ok:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
+    if use_expander:
+        with st.expander(f"⚙️ Bet Steel — {game['away']} @ {game['home']}"):
+            _body()
+    else:
+        _body()
+
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "username" not in st.session_state:
@@ -691,15 +876,44 @@ props_source = "live" if live_props else "sample"
 ALL_PROPS = live_props if live_props else SAMPLE_PLAYER_PROPS
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-    "📡 Live Odds", "📊 Results", "🏈 Preseason", "📈 Trends",
+    "🎲 Betting", "📊 Results", "🏈 Preseason", "📈 Trends",
     "🏈 Props", "🏆 Fantasy", "📰 Headlines", "🧾 My Bets", "👤 Profile"
 ], on_change="rerun")
 
 if tab1.open:
     with tab1:
-        st.header("📡 Live Odds")
-        st.caption("Odds boards load when books open. Sample data shown in preseason.")
-        st.info("Connect The Odds API key in secrets for live moneyline / spread / total boards.")
+        st.header("🎲 Betting — NFL Game Lines")
+        games, odds_err = load_nfl_betting_board()
+        if odds_err == "missing_key":
+            st.info("Live odds are offline: no `ODDS_API_KEY` found in `st.secrets`. Add your The Odds API key to enable moneyline, spread, and total boards.")
+        elif odds_err:
+            st.error(f"Couldn't load live odds right now. {odds_err}")
+        elif not games:
+            st.warning("No upcoming NFL games found from The Odds API right now.")
+        else:
+            st.caption(f"{len(games)} upcoming game(s) · lines refresh roughly every 2 hours · Source: The Odds API")
+            for i, g in enumerate(games):
+                books = g["books"]
+                header = f"{g['away']} @ {g['home']}  ·  {fmt_kickoff(g['commence_time'])}"
+                with st.expander(header, expanded=(i == 0)):
+                    if books:
+                        rows = []
+                        for b in books:
+                            row = {"Sportsbook": b["title"]}
+                            if "h2h" in b:
+                                row["ML Away"] = fmt_odds(b["h2h"]["away"])
+                                row["ML Home"] = fmt_odds(b["h2h"]["home"])
+                            if "spreads" in b:
+                                row["Spread Away"] = f"{b['spreads']['away']['point']:+g} ({fmt_odds(b['spreads']['away']['price'])})"
+                                row["Spread Home"] = f"{b['spreads']['home']['point']:+g} ({fmt_odds(b['spreads']['home']['price'])})"
+                            if "totals" in b:
+                                row["Total O"] = f"O {b['totals']['over']['point']} ({fmt_odds(b['totals']['over']['price'])})"
+                                row["Total U"] = f"U {b['totals']['under']['point']} ({fmt_odds(b['totals']['under']['price'])})"
+                            rows.append(row)
+                        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+                    else:
+                        st.caption("No sportsbook lines available for this game yet.")
+                    render_game_bet_ui(g, f"gamebet_{i}", use_expander=False)
 
 if tab2.open:
     with tab2:
