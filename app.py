@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import bcrypt
 import json
 import os
@@ -578,6 +578,40 @@ def fmt_kickoff(iso_ts):
     except Exception:
         return iso_ts or "TBD"
 
+def nfl_week_label(iso_ts):
+    """Best-effort NFL week label for a game's kickoff time.
+
+    The Odds API doesn't tag games with a week number, so derive one from the
+    standard schedule rule: Week 1 kicks off the Thursday after Labor Day, and
+    each week resets on Tuesday.
+    """
+    try:
+        dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+    except Exception:
+        return "TBD"
+    season_year = dt.year if dt.month >= 3 else dt.year - 1
+    sep1 = date(season_year, 9, 1)
+    labor_day = sep1 + timedelta(days=(7 - sep1.weekday()) % 7)
+    week1_kickoff = labor_day + timedelta(days=3)
+    boundary_start = week1_kickoff - timedelta(days=2)  # weeks reset on Tuesday
+    delta_days = (dt.date() - boundary_start).days
+    if delta_days < 0:
+        return "Preseason"
+    week_num = delta_days // 7 + 1
+    return f"Week {week_num}" if week_num <= 18 else "Playoffs"
+
+def nfl_week_sort_key(label):
+    if label == "Preseason":
+        return -1
+    if label == "Playoffs":
+        return 999
+    if label.startswith("Week "):
+        try:
+            return int(label.split(" ")[1])
+        except (IndexError, ValueError):
+            return 500
+    return 1000  # "TBD" and anything unrecognized sorts last
+
 # Users / Steel system
 USERS_DB_PATH = "users_db.json"
 STEEL_STAKE_OPTIONS = [10, 25, 50, 100, 250, 500]
@@ -891,10 +925,22 @@ if tab1.open:
         elif not games:
             st.warning("No upcoming NFL games found from The Odds API right now.")
         else:
-            st.caption(f"{len(games)} upcoming game(s) · lines refresh roughly every 2 hours · Source: The Odds API")
+            for g in games:
+                g["week"] = nfl_week_label(g["commence_time"])
+            week_options = ["All Weeks"] + sorted(
+                {g["week"] for g in games}, key=nfl_week_sort_key
+            )
+            selected_week = st.selectbox("NFL Week", week_options, key="betting_week_filter")
+            if selected_week != "All Weeks":
+                games = [g for g in games if g["week"] == selected_week]
+
+            st.caption(f"{len(games)} game(s) · lines refresh roughly every 2 hours · Source: The Odds API")
+            if not games:
+                st.info("No games found for that week.")
             for i, g in enumerate(games):
                 books = g["books"]
-                header = f"{g['away']} @ {g['home']}  ·  {fmt_kickoff(g['commence_time'])}"
+                week_prefix = f"{g['week']} · " if selected_week == "All Weeks" else ""
+                header = f"{week_prefix}{g['away']} @ {g['home']}  ·  {fmt_kickoff(g['commence_time'])}"
                 with st.expander(header, expanded=(i == 0)):
                     if books:
                         rows = []
