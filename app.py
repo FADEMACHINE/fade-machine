@@ -693,153 +693,162 @@ ALL_PROPS = live_props if live_props else SAMPLE_PLAYER_PROPS
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "📡 Live Odds", "📊 Results", "🏈 Preseason", "📈 Trends",
     "🏈 Props", "🏆 Fantasy", "📰 Headlines", "🧾 My Bets", "👤 Profile"
-])
+], on_change="rerun")
 
-with tab1:
-    st.header("📡 Live Odds")
-    st.caption("Odds boards load when books open. Sample data shown in preseason.")
-    st.info("Connect The Odds API key in secrets for live moneyline / spread / total boards.")
+if tab1.open:
+    with tab1:
+        st.header("📡 Live Odds")
+        st.caption("Odds boards load when books open. Sample data shown in preseason.")
+        st.info("Connect The Odds API key in secrets for live moneyline / spread / total boards.")
 
-with tab2:
-    st.header("📊 Results")
-    for g in COMPLETED_GAMES:
-        st.subheader(g["label"])
-        st.metric("Final", f"{g['away']} {g['away_score']} — {g['home']} {g['home_score']}")
-        st.caption(g.get("notes", ""))
+if tab2.open:
+    with tab2:
+        st.header("📊 Results")
+        for g in COMPLETED_GAMES:
+            st.subheader(g["label"])
+            st.metric("Final", f"{g['away']} {g['away_score']} — {g['home']} {g['home_score']}")
+            st.caption(g.get("notes", ""))
 
-with tab3:
-    st.header("🏈 Preseason")
-    st.caption("Props & fantasy tabs use sample lines until books post full boards.")
-    st.write("HOF Game data is archived under Results.")
+if tab3.open:
+    with tab3:
+        st.header("🏈 Preseason")
+        st.caption("Props & fantasy tabs use sample lines until books post full boards.")
+        st.write("HOF Game data is archived under Results.")
 
-with tab4:
-    st.header("📈 Trends")
-    st.caption("Season-long and weekly trend snapshots")
-    st.write("• HOF Game: Panthers 33, Cardinals 30 (Haynes King walk-off)")
-    st.write("• Fantasy rankings update from season-long futures JSON")
+if tab4.open:
+    with tab4:
+        st.header("📈 Trends")
+        st.caption("Season-long and weekly trend snapshots")
+        st.write("• HOF Game: Panthers 33, Cardinals 30 (Haynes King walk-off)")
+        st.write("• Fantasy rankings update from season-long futures JSON")
 
-with tab5:
-    st.header("🏈 Player Prop Bets")
-    st.caption(f"Source: {'Live Odds API' if props_source == 'live' else 'Sample / illustrative lines (preseason)'} · Place Steel on Over/Under")
+if tab5.open:
+    with tab5:
+        st.header("🏈 Player Prop Bets")
+        st.caption(f"Source: {'Live Odds API' if props_source == 'live' else 'Sample / illustrative lines (preseason)'} · Place Steel on Over/Under")
 
-    markets = sorted(set(p["market"] for p in ALL_PROPS))
-    positions = sorted(set(p.get("pos", "") for p in ALL_PROPS if p.get("pos")))
-    f1, f2, f3 = st.columns(3)
-    with f1:
-        mkt_filter = st.multiselect("Market", markets, default=markets, key="prop_mkt")
-    with f2:
-        pos_filter = st.multiselect("Position", positions if positions else ["QB", "RB", "WR", "TE"],
-                                    default=positions if positions else ["QB", "RB", "WR", "TE"], key="prop_pos")
-    with f3:
-        search = st.text_input("Search player", "", key="prop_search")
+        markets = sorted(set(p["market"] for p in ALL_PROPS))
+        positions = sorted(set(p.get("pos", "") for p in ALL_PROPS if p.get("pos")))
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            mkt_filter = st.multiselect("Market", markets, default=markets, key="prop_mkt")
+        with f2:
+            pos_filter = st.multiselect("Position", positions if positions else ["QB", "RB", "WR", "TE"],
+                                        default=positions if positions else ["QB", "RB", "WR", "TE"], key="prop_pos")
+        with f3:
+            search = st.text_input("Search player", "", key="prop_search")
 
-    filtered = []
-    for p in ALL_PROPS:
-        if mkt_filter and p["market"] not in mkt_filter:
-            continue
-        if pos_filter and p.get("pos") and p["pos"] not in pos_filter:
-            continue
-        if search and search.lower() not in p["player"].lower():
-            continue
-        filtered.append(p)
+        filtered = []
+        for p in ALL_PROPS:
+            if mkt_filter and p["market"] not in mkt_filter:
+                continue
+            if pos_filter and p.get("pos") and p["pos"] not in pos_filter:
+                continue
+            if search and search.lower() not in p["player"].lower():
+                continue
+            filtered.append(p)
 
-    if not filtered:
-        st.warning("No props match filters. Live props may be limited in preseason.")
-    else:
-        st.markdown("### Prop cards")
-        for i, p in enumerate(filtered):
-            summary = f"**{p['player']}** · {p.get('pos','')} · {p['market']} · **{p['line']}**  |  O {p.get('over','—')} / U {p.get('under','—')}"
-            with st.expander(summary, expanded=False):
-                st.caption(f"{p.get('team','')} · {p.get('game','')}")
-                render_prop_bet_ui(p, f"propbet_{i}", use_expander=False)
+        if not filtered:
+            st.warning("No props match filters. Live props may be limited in preseason.")
+        else:
+            st.markdown("### Prop cards")
+            for i, p in enumerate(filtered):
+                summary = f"**{p['player']}** · {p.get('pos','')} · {p['market']} · **{p['line']}**  |  O {p.get('over','—')} / U {p.get('under','—')}"
+                with st.expander(summary, expanded=False):
+                    st.caption(f"{p.get('team','')} · {p.get('game','')}")
+                    render_prop_bet_ui(p, f"propbet_{i}", use_expander=False)
 
-with tab6:
-    # Advanced season-long models + rank-by-prop (see fantasy_models.py)
-    render_fantasy_tab(ALL_PROPS)
+if tab6.open:
+    with tab6:
+        # Advanced season-long models + rank-by-prop (see fantasy_models.py)
+        render_fantasy_tab(ALL_PROPS)
 
-with tab7:
-    st.header("📰 Preseason Headlines")
-    st.write("""
-    - **FINAL:** Panthers 33, Cardinals 30 (Haynes King walk-off TD) — HOF Game Aug 6
-    - Fantasy rankings powered by season-long futures lines
-    - Steel betting live on player props
-    """)
+if tab7.open:
+    with tab7:
+        st.header("📰 Preseason Headlines")
+        st.write("""
+        - **FINAL:** Panthers 33, Cardinals 30 (Haynes King walk-off TD) — HOF Game Aug 6
+        - Fantasy rankings powered by season-long futures lines
+        - Steel betting live on player props
+        """)
 
-with tab8:
-    st.header("🧾 My Bets")
-    if not st.session_state.authenticated:
-        st.warning("Log in on the Profile tab to see open and settled bets.")
-    else:
-        current = get_current_profile()
-        open_sub, settled_sub = st.tabs(["Open Bets", "Settled History"])
-        with open_sub:
-            opens = current.get("open_bets", []) if current else []
-            if not opens:
-                st.caption("No open bets.")
-            else:
-                st.dataframe(pd.DataFrame(opens), use_container_width=True, hide_index=True)
-        with settled_sub:
-            settled = current.get("settled_bets", []) if current else []
-            if not settled:
-                st.caption("No settled bets yet.")
-            else:
-                st.dataframe(pd.DataFrame(settled), use_container_width=True, hide_index=True)
-
-with tab9:
-    st.header("👤 Profile")
-    if not st.session_state.authenticated:
-        login_tab, register_tab = st.tabs(["Login", "Create Account"])
-        with login_tab:
-            u = st.text_input("Username", key="login_u")
-            p = st.text_input("Password", type="password", key="login_p")
-            if st.button("Log in"):
-                ok, msg = login_user(u, p)
-                if ok:
-                    st.success(msg)
-                    st.rerun()
+if tab8.open:
+    with tab8:
+        st.header("🧾 My Bets")
+        if not st.session_state.authenticated:
+            st.warning("Log in on the Profile tab to see open and settled bets.")
+        else:
+            current = get_current_profile()
+            open_sub, settled_sub = st.tabs(["Open Bets", "Settled History"])
+            with open_sub:
+                opens = current.get("open_bets", []) if current else []
+                if not opens:
+                    st.caption("No open bets.")
                 else:
-                    st.error(msg)
-        with register_tab:
-            nu = st.text_input("New username", key="reg_u")
-            npw = st.text_input("New password", type="password", key="reg_p")
-            nd = st.text_input("Display name (optional)", key="reg_d")
-            if st.button("Create account"):
-                ok, msg = register_user(nu, npw, nd)
-                if ok:
-                    st.success(msg)
+                    st.dataframe(pd.DataFrame(opens), use_container_width=True, hide_index=True)
+            with settled_sub:
+                settled = current.get("settled_bets", []) if current else []
+                if not settled:
+                    st.caption("No settled bets yet.")
                 else:
-                    st.error(msg)
-    else:
-        current = get_current_profile()
-        st.success(f"Logged in as **{display_name}**")
-        st.metric("Steel Balance", steel_balance)
-        sub_account, sub_buy, sub_history = st.tabs(["Account", "Buy Steel", "Transaction History"])
-        with sub_account:
-            st.write(f"Username: `{st.session_state.username}`")
-            if st.button("Log out"):
-                st.session_state.authenticated = False
-                st.session_state.username = None
-                st.rerun()
-        with sub_buy:
-            pack_amount = st.selectbox("Steel pack",
-                                       STEEL_STAKE_OPTIONS,
-                                       format_func=lambda x: f"{x} Steel — ${x * STEEL_PRICE_USD:.2f}")
-            if st.button(f"Purchase {pack_amount} Steel", type="primary"):
-                ok, msg = purchase_steel(pack_amount)
-                st.success(msg) if ok else st.error(msg)
-                if ok:
+                    st.dataframe(pd.DataFrame(settled), use_container_width=True, hide_index=True)
+
+if tab9.open:
+    with tab9:
+        st.header("👤 Profile")
+        if not st.session_state.authenticated:
+            login_tab, register_tab = st.tabs(["Login", "Create Account"])
+            with login_tab:
+                u = st.text_input("Username", key="login_u")
+                p = st.text_input("Password", type="password", key="login_p")
+                if st.button("Log in"):
+                    ok, msg = login_user(u, p)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with register_tab:
+                nu = st.text_input("New username", key="reg_u")
+                npw = st.text_input("New password", type="password", key="reg_p")
+                nd = st.text_input("Display name (optional)", key="reg_d")
+                if st.button("Create account"):
+                    ok, msg = register_user(nu, npw, nd)
+                    if ok:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+        else:
+            current = get_current_profile()
+            st.success(f"Logged in as **{display_name}**")
+            st.metric("Steel Balance", steel_balance)
+            sub_account, sub_buy, sub_history = st.tabs(["Account", "Buy Steel", "Transaction History"])
+            with sub_account:
+                st.write(f"Username: `{st.session_state.username}`")
+                if st.button("Log out"):
+                    st.session_state.authenticated = False
+                    st.session_state.username = None
                     st.rerun()
-        with sub_history:
-            txs = current.get("transactions", []) if current else []
-            if not txs:
-                st.caption("No transactions.")
-            else:
-                st.dataframe(pd.DataFrame([{
-                    "Date": str(t.get("timestamp", ""))[:16],
-                    "Type": str(t.get("type", "")).replace("_", " ").title(),
-                    "Steel": t.get("steel_amount"),
-                    "Note": t.get("note", "")
-                } for t in txs]), use_container_width=True, hide_index=True)
+            with sub_buy:
+                pack_amount = st.selectbox("Steel pack",
+                                           STEEL_STAKE_OPTIONS,
+                                           format_func=lambda x: f"{x} Steel — ${x * STEEL_PRICE_USD:.2f}")
+                if st.button(f"Purchase {pack_amount} Steel", type="primary"):
+                    ok, msg = purchase_steel(pack_amount)
+                    st.success(msg) if ok else st.error(msg)
+                    if ok:
+                        st.rerun()
+            with sub_history:
+                txs = current.get("transactions", []) if current else []
+                if not txs:
+                    st.caption("No transactions.")
+                else:
+                    st.dataframe(pd.DataFrame([{
+                        "Date": str(t.get("timestamp", ""))[:16],
+                        "Type": str(t.get("type", "")).replace("_", " ").title(),
+                        "Steel": t.get("steel_amount"),
+                        "Note": t.get("note", "")
+                    } for t in txs]), use_container_width=True, hide_index=True)
 
 st.markdown("---")
 st.caption("FADE MACHINE • Season-long futures • Rank by prop • Prop Steel bets • Advanced fantasy models")

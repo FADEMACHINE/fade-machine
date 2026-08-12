@@ -217,6 +217,7 @@ RANK_MOVES = {
 }
 
 
+@st.cache_data(ttl="1h")
 def load_season_long():
     paths = [SEASON_LONG_PATH, os.path.join(os.path.dirname(__file__), SEASON_LONG_PATH)]
     for p in paths:
