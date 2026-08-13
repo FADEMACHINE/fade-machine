@@ -771,12 +771,14 @@ def parse_odds_games(raw_games):
             if any(k in entry for k in ("h2h", "spreads", "totals")):
                 books.append(entry)
         books.sort(key=lambda b: PREFERRED_BOOKMAKERS.index(b["key"]) if b["key"] in PREFERRED_BOOKMAKERS else len(PREFERRED_BOOKMAKERS))
+        capped_books = books[:BOOKS_PER_GAME]
         games.append({
             "id": g.get("id"),
             "away": away,
             "home": home,
             "commence_time": g.get("commence_time", ""),
-            "books": books[:BOOKS_PER_GAME],
+            "books": capped_books,
+            "consensus": build_game_consensus(capped_books),
         })
     games.sort(key=lambda g: g["commence_time"])
     return games
@@ -800,6 +802,73 @@ def fmt_odds(price):
     if price is None:
         return "—"
     return f"+{price}" if price > 0 else str(price)
+
+def american_to_implied_prob(price):
+    price = float(price)
+    return 100.0 / (price + 100.0) if price > 0 else -price / (-price + 100.0)
+
+def implied_prob_to_american(prob):
+    prob = min(max(prob, 0.0001), 0.9999)
+    return round(-100.0 * prob / (1.0 - prob)) if prob >= 0.5 else round(100.0 * (1.0 - prob) / prob)
+
+def devig_two_way(price_a, price_b):
+    """Strip the vig out of a book's two-sided price, returning fair
+    probabilities that sum to exactly 1."""
+    pa, pb = american_to_implied_prob(price_a), american_to_implied_prob(price_b)
+    total = pa + pb
+    return (0.5, 0.5) if total <= 0 else (pa / total, pb / total)
+
+def build_game_consensus(books):
+    """MACHINE Consensus: de-vig every listed book's price for a side, average
+    those fair probabilities across books, then convert back to American
+    odds. This is the only price Steel bets settle at — individual books
+    are shown for reference only, so nobody can line-shop between them."""
+    consensus = {}
+
+    h2h_books = [b for b in books if "h2h" in b]
+    if h2h_books:
+        fair_away = [devig_two_way(b["h2h"]["away"], b["h2h"]["home"])[0] for b in h2h_books]
+        fair_home = [devig_two_way(b["h2h"]["away"], b["h2h"]["home"])[1] for b in h2h_books]
+        avg_a, avg_h = sum(fair_away) / len(fair_away), sum(fair_home) / len(fair_home)
+        norm = avg_a + avg_h
+        consensus["h2h"] = {
+            "away": implied_prob_to_american(avg_a / norm),
+            "home": implied_prob_to_american(avg_h / norm),
+            "book_count": len(h2h_books),
+        }
+
+    spread_books = [b for b in books if "spreads" in b]
+    if spread_books:
+        fair_away = [devig_two_way(b["spreads"]["away"]["price"], b["spreads"]["home"]["price"])[0] for b in spread_books]
+        fair_home = [devig_two_way(b["spreads"]["away"]["price"], b["spreads"]["home"]["price"])[1] for b in spread_books]
+        avg_a, avg_h = sum(fair_away) / len(fair_away), sum(fair_home) / len(fair_home)
+        norm = avg_a + avg_h
+        home_points = sorted(b["spreads"]["home"]["point"] for b in spread_books)
+        median_home_point = home_points[len(home_points) // 2]
+        consensus["spreads"] = {
+            "away": implied_prob_to_american(avg_a / norm),
+            "home": implied_prob_to_american(avg_h / norm),
+            "away_point": -median_home_point,
+            "home_point": median_home_point,
+            "book_count": len(spread_books),
+        }
+
+    total_books = [b for b in books if "totals" in b]
+    if total_books:
+        fair_over = [devig_two_way(b["totals"]["over"]["price"], b["totals"]["under"]["price"])[0] for b in total_books]
+        fair_under = [devig_two_way(b["totals"]["over"]["price"], b["totals"]["under"]["price"])[1] for b in total_books]
+        avg_o, avg_u = sum(fair_over) / len(fair_over), sum(fair_under) / len(fair_under)
+        norm = avg_o + avg_u
+        over_points = sorted(b["totals"]["over"]["point"] for b in total_books)
+        median_point = over_points[len(over_points) // 2]
+        consensus["totals"] = {
+            "over": implied_prob_to_american(avg_o / norm),
+            "under": implied_prob_to_american(avg_u / norm),
+            "point": median_point,
+            "book_count": len(total_books),
+        }
+
+    return consensus
 
 def fmt_kickoff(iso_ts):
     try:
@@ -1091,58 +1160,60 @@ def render_prop_bet_ui(prop, key_prefix, use_expander=True):
         _body()
 
 def render_game_bet_ui(game, key_prefix, use_expander=True):
-    """Place Steel on a game's moneyline, spread, or total — mirrors render_prop_bet_ui."""
+    """Place Steel on a game's MACHINE Consensus line — the de-vigged
+    average across all listed books (build_game_consensus). Users can't
+    pick a specific sportsbook's price here; individual books are shown
+    elsewhere for reference only."""
     def _body():
         if not st.session_state.get("authenticated"):
             st.warning("Log in via Profile to place Steel bets on game lines.")
             return
-        books = [b for b in game["books"] if any(k in b for k in ("h2h", "spreads", "totals"))]
-        if not books:
-            st.caption("No sportsbook lines available for this game.")
+        consensus = game.get("consensus") or {}
+        if not consensus:
+            st.caption("No MACHINE Consensus available for this game yet.")
             return
         bal = get_current_profile().get("steel_balance", 0) if get_current_profile() else 0
-        st.caption(f"Available: {bal} Steel")
+        st.caption(f"Available: {bal} Steel · Betting the MACHINE Consensus line")
 
         market_labels = []
-        if any("h2h" in b for b in books):
+        if "h2h" in consensus:
             market_labels.append("Moneyline")
-        if any("spreads" in b for b in books):
+        if "spreads" in consensus:
             market_labels.append("Spread")
-        if any("totals" in b for b in books):
+        if "totals" in consensus:
             market_labels.append("Total")
 
         bet_type = st.radio("Market", market_labels, key=f"{key_prefix}_type", horizontal=True)
-        mkey = {"Moneyline": "h2h", "Spread": "spreads", "Total": "totals"}[bet_type]
-        book_choices = [b["title"] for b in books if mkey in b]
-        book_title = st.selectbox("Sportsbook", book_choices, key=f"{key_prefix}_book")
-        book = next(b for b in books if b["title"] == book_title)
 
         if bet_type == "Moneyline":
+            c = consensus["h2h"]
             side = st.radio(
                 "Side", ["away", "home"],
-                format_func=lambda s: f"{game['away']} ({fmt_odds(book['h2h']['away'])})" if s == "away" else f"{game['home']} ({fmt_odds(book['h2h']['home'])})",
+                format_func=lambda s: f"{game['away']} ({fmt_odds(c['away'])})" if s == "away" else f"{game['home']} ({fmt_odds(c['home'])})",
                 horizontal=True, key=f"{key_prefix}_side",
             )
-            odds_val = book["h2h"][side]
+            odds_val = c[side]
             line_val = None
             selection = game["away"] if side == "away" else game["home"]
         elif bet_type == "Spread":
+            c = consensus["spreads"]
             side = st.radio(
                 "Side", ["away", "home"],
-                format_func=lambda s: f"{game['away']} ({book['spreads']['away']['point']:+g}, {fmt_odds(book['spreads']['away']['price'])})" if s == "away" else f"{game['home']} ({book['spreads']['home']['point']:+g}, {fmt_odds(book['spreads']['home']['price'])})",
+                format_func=lambda s: f"{game['away']} ({c['away_point']:+g}, {fmt_odds(c['away'])})" if s == "away" else f"{game['home']} ({c['home_point']:+g}, {fmt_odds(c['home'])})",
                 horizontal=True, key=f"{key_prefix}_side",
             )
-            odds_val = book["spreads"][side]["price"]
-            line_val = book["spreads"][side]["point"]
+            odds_val = c[side]
+            line_val = c["away_point"] if side == "away" else c["home_point"]
             selection = game["away"] if side == "away" else game["home"]
         else:
+            c = consensus["totals"]
             side = st.radio(
                 "Side", ["over", "under"],
-                format_func=lambda s: f"OVER {book['totals']['over']['point']} ({fmt_odds(book['totals']['over']['price'])})" if s == "over" else f"UNDER {book['totals']['under']['point']} ({fmt_odds(book['totals']['under']['price'])})",
+                format_func=lambda s: f"OVER {c['point']} ({fmt_odds(c['over'])})" if s == "over" else f"UNDER {c['point']} ({fmt_odds(c['under'])})",
                 horizontal=True, key=f"{key_prefix}_side",
             )
-            odds_val = book["totals"][side]["price"]
-            line_val = book["totals"][side]["point"]
+            odds_val = c[side]
+            line_val = c["point"]
             selection = side
 
         stake = st.selectbox("Stake (Steel)", STEEL_STAKE_OPTIONS, index=1, key=f"{key_prefix}_stake")
@@ -1154,7 +1225,7 @@ def render_game_bet_ui(game, key_prefix, use_expander=True):
 
         if st.button("Confirm Bet", key=f"{key_prefix}_btn", type="primary"):
             line_txt = f" {line_val:+g}" if line_val is not None else ""
-            label = f"{game['away']} @ {game['home']} — {bet_type} {selection}{line_txt} ({book_title})"
+            label = f"{game['away']} @ {game['home']} — {bet_type} {selection}{line_txt} (MACHINE Consensus)"
             ok, msg = place_steel_bet(
                 game_id=game["id"], away=game["away"], home=game["home"],
                 market=bet_type, selection=selection, line=line_val,
@@ -1271,6 +1342,27 @@ if tab1.open:
                             f"<div style='margin-top:8px'></div>",
                             unsafe_allow_html=True,
                         )
+
+                        consensus = g.get("consensus") or {}
+                        cons_lines = []
+                        if "h2h" in consensus:
+                            c = consensus["h2h"]
+                            cons_lines.append(f"ML — {g['away']} {fmt_odds(c['away'])} · {g['home']} {fmt_odds(c['home'])}")
+                        if "spreads" in consensus:
+                            c = consensus["spreads"]
+                            cons_lines.append(f"Spread — {g['away']} {c['away_point']:+g} ({fmt_odds(c['away'])}) · {g['home']} {c['home_point']:+g} ({fmt_odds(c['home'])})")
+                        if "totals" in consensus:
+                            c = consensus["totals"]
+                            cons_lines.append(f"Total — O {c['point']} ({fmt_odds(c['over'])}) · U {c['point']} ({fmt_odds(c['under'])})")
+                        st.markdown(
+                            "<div class='fm-stat-card' style='margin-bottom:10px'>"
+                            f"<div class='fm-stat-label'>🎯 MACHINE Consensus — de-vigged average across {len(books)} book{'s' if len(books) != 1 else ''} · this is the only price Steel bets settle at</div>"
+                            "<div class='fm-stat-body fm-nums'>" + "<br>".join(cons_lines) + "</div>"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.caption("Books below are for reference only — you can't bet a specific book's price.")
+
                         rows = []
                         # Track raw numeric prices per column so the best price
                         # for the bettor can be highlighted — a standard
