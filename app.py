@@ -708,7 +708,7 @@ MARKET_LABEL = {
 
 # ---- Live NFL game odds (The Odds API) ----
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
-ODDS_API_TTL_SECONDS = 2 * 60 * 60  # free tier is ~500 credits/month — don't refetch every reload
+ODDS_API_TTL_SECONDS = 3 * 60 * 60  # free tier is ~500 credits/month — don't refetch every reload
 PREFERRED_BOOKMAKERS = ["draftkings", "fanduel", "betmgm", "caesars", "espnbet"]
 BOOKS_PER_GAME = 4
 
@@ -718,7 +718,7 @@ def get_odds_api_key():
     except Exception:
         return None
 
-@st.cache_data(ttl=ODDS_API_TTL_SECONDS, show_spinner="Loading live NFL odds...")
+@st.cache_data(ttl=ODDS_API_TTL_SECONDS, persist="disk", show_spinner="Loading live NFL odds...")
 def fetch_nfl_odds_raw(api_key):
     resp = requests.get(
         ODDS_API_URL,
@@ -1255,7 +1255,7 @@ if tab1.open:
             if selected_week != "All Weeks":
                 games = [g for g in games if g["week"] == selected_week]
 
-            st.caption(f"{len(games)} game(s) · lines refresh roughly every 2 hours · Source: The Odds API")
+            st.caption(f"{len(games)} game(s) · lines refresh roughly every 3 hours · Source: The Odds API")
             if not games:
                 st.info("No games found for that week.")
             for i, g in enumerate(games):
