@@ -29,6 +29,60 @@ def ats_dataframe(data=None):
     return df
 
 
+def build_ats_trends_from_rows(teams_rows, ats_rows):
+    """Aggregate raw ats_results view rows (one row per game) into one row
+    per team per season — the same shape load_ats_trends() returns from the
+    sample JSON, so both sources are interchangeable for aggregate_ats().
+    Only games with a computed verdict (covering_team or push) count;
+    undecided games (no result/spread_line yet) are excluded, not guessed.
+    """
+    if not teams_rows or not ats_rows:
+        return {"seasons": [], "divisions": [], "records": []}
+
+    team_info = {t["team_id"]: t for t in teams_rows}
+    df = pd.DataFrame(ats_rows)
+    decided = df[df["push"].notna()].copy()
+    if decided.empty:
+        return {"seasons": [], "divisions": [], "records": []}
+
+    long_rows = []
+    for _, g in decided.iterrows():
+        for team, is_home in ((g["home_team"], True), (g["away_team"], False)):
+            if g["push"]:
+                outcome = "push"
+            elif g["covering_team"] == team:
+                outcome = "win"
+            else:
+                outcome = "loss"
+            long_rows.append({"team": team, "season": g["season"], "is_home": is_home, "outcome": outcome})
+    long_df = pd.DataFrame(long_rows)
+
+    records = []
+    for (team, season), grp in long_df.groupby(["team", "season"]):
+        info = team_info.get(team, {})
+        home, away = grp[grp["is_home"]], grp[~grp["is_home"]]
+        wins, losses, pushes = (grp["outcome"] == "win").sum(), (grp["outcome"] == "loss").sum(), (grp["outcome"] == "push").sum()
+        games = int(wins + losses + pushes)
+        records.append({
+            "team": team,
+            "team_name": info.get("name", team),
+            "division": info.get("division", "Unknown"),
+            "season": int(season),
+            "ats_wins": int(wins),
+            "ats_losses": int(losses),
+            "ats_pushes": int(pushes),
+            "home_ats_wins": int((home["outcome"] == "win").sum()),
+            "home_ats_losses": int((home["outcome"] == "loss").sum()),
+            "away_ats_wins": int((away["outcome"] == "win").sum()),
+            "away_ats_losses": int((away["outcome"] == "loss").sum()),
+            "cover_pct": round(int(wins) / games, 3) if games else 0.0,
+        })
+
+    seasons = sorted(long_df["season"].unique().tolist())
+    divisions = sorted({team_info.get(t, {}).get("division", "Unknown") for t in long_df["team"].unique()})
+    return {"seasons": seasons, "divisions": divisions, "records": records}
+
+
 def aggregate_ats(df, seasons=None, divisions=None, teams=None):
     """Aggregate ATS records across the selected seasons for each team."""
     if df.empty:

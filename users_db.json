@@ -1,1 +1,11 @@
-{}
+{
+  "guest": {
+    "password_hash": "$2b$12$/5qCBuzM.7nzqgwdv3Tw2ukei3cf0g3gyUVB.ucDdEGGzMeXz7mOm",
+    "display_name": "Guest",
+    "created": "2026-08-13T02:48:49.552808",
+    "steel_balance": 0,
+    "open_bets": [],
+    "settled_bets": [],
+    "transactions": []
+  }
+}

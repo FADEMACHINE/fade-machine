@@ -2,3 +2,7 @@ streamlit>=1.55.0
 pandas>=2.0.0
 requests>=2.31.0
 bcrypt>=4.0.0
+supabase>=2.9.0
+
+# Ingestion-only — needed for scripts/load_historical_data.py, not the live app
+nfl_data_py>=0.3.2

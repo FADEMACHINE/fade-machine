@@ -5,7 +5,9 @@ from datetime import datetime, date, timedelta
 import bcrypt
 import json
 import os
+from supabase import create_client
 from fantasy_models import render_fantasy_tab
+import content_engine
 
 st.set_page_config(
     page_title="FADE MACHINE | NFL Analytics",
@@ -840,6 +842,76 @@ def nfl_week_sort_key(label):
             return 500
     return 1000  # "TBD" and anything unrecognized sorts last
 
+# ---- Historical NFL data (Supabase: teams / games / ats_results) ----
+# Reads with the anon key only — this app never writes to Supabase.
+# scripts/load_historical_data.py (a separate, offline, one-time job) is
+# what populates these tables using its own service_role key.
+@st.cache_resource(show_spinner=False)
+def get_supabase_client():
+    try:
+        url = st.secrets.get("SUPABASE_URL")
+        key = st.secrets.get("SUPABASE_ANON_KEY")
+    except Exception:
+        return None
+    if not url or not key:
+        return None
+    return create_client(url, key)
+
+def _fetch_all_rows(client, table_name, page_size=1000):
+    """PostgREST caps a bare select() at ~1000 rows — page through with
+    .range() until a short page signals the end, instead of silently
+    truncating the table."""
+    rows = []
+    start = 0
+    while True:
+        page = client.table(table_name).select("*").range(start, start + page_size - 1).execute().data
+        rows.extend(page)
+        if len(page) < page_size:
+            break
+        start += page_size
+    return rows
+
+@st.cache_data(ttl=3600, show_spinner="Loading historical NFL data...")
+def fetch_supabase_ats_data():
+    client = get_supabase_client()
+    if not client:
+        return None, None, "missing_credentials"
+    try:
+        teams_rows = _fetch_all_rows(client, "teams")
+        ats_rows = _fetch_all_rows(client, "ats_results")
+        return teams_rows, ats_rows, None
+    except Exception as e:
+        return None, None, str(e)
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_completed_games(limit=25):
+    client = get_supabase_client()
+    if not client:
+        return None, "missing_credentials"
+    try:
+        resp = (
+            client.table("games")
+            .select("game_id,season,week,game_date,home_team,away_team,home_score,away_score")
+            .not_.is_("home_score", "null")
+            .order("game_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return resp.data, None
+    except Exception as e:
+        return None, str(e)
+
+def load_trend_data():
+    """Returns (data, source). data has the shape {'seasons','divisions','records'}.
+    Prefers live Supabase ATS history; falls back to the bundled sample JSON,
+    clearly labeled as sample (never presented as if it were live)."""
+    teams_rows, ats_rows, err = fetch_supabase_ats_data()
+    if not err and teams_rows and ats_rows:
+        data = content_engine.build_ats_trends_from_rows(teams_rows, ats_rows)
+        if data.get("records"):
+            return data, "live"
+    return content_engine.load_ats_trends(), "sample"
+
 # Users / Steel system
 USERS_DB_PATH = "users_db.json"
 STEEL_STAKE_OPTIONS = [10, 25, 50, 100, 250, 500]
@@ -1257,6 +1329,26 @@ if tab2.open:
                 if g.get("notes"):
                     st.caption(g["notes"])
 
+        st.markdown("### Recent NFL Results")
+        completed, completed_err = fetch_completed_games(limit=25)
+        if completed_err == "missing_credentials":
+            st.info("Add `SUPABASE_URL` and `SUPABASE_ANON_KEY` to `st.secrets` to show real historical results here.")
+        elif completed_err:
+            st.error(f"Couldn't load results from Supabase. {completed_err}")
+        elif not completed:
+            st.caption("No completed games in the database yet.")
+        else:
+            for g in completed:
+                with st.container(border=True):
+                    st.markdown(
+                        f"<div class='fm-prop-card-meta' style='margin-bottom:2px'>Season {g['season']} · Week {g['week']} · {g.get('game_date', '')}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f"<div class='fm-prop-card-line'>{g['away_team']} {g['away_score']} — {g['home_team']} {g['home_score']}</div>",
+                        unsafe_allow_html=True,
+                    )
+
 if tab3.open:
     with tab3:
         section_title("🏈", "Preseason")
@@ -1267,6 +1359,43 @@ if tab4.open:
     with tab4:
         section_title("📈", "Trends")
         st.caption("Season-long and weekly trend snapshots")
+
+        trend_data, trend_source = load_trend_data()
+        st.caption(f"Source: {'Supabase (real historical ATS results)' if trend_source == 'live' else 'Sample / illustrative ATS data'}")
+        ats_df = content_engine.ats_dataframe(trend_data)
+        if ats_df.empty:
+            st.warning("No ATS trend data available.")
+        else:
+            seasons = trend_data.get("seasons", [])
+            divisions = trend_data.get("divisions", [])
+            tf1, tf2 = st.columns(2)
+            with tf1:
+                season_filter = st.multiselect("Season", seasons, default=seasons[-3:] if len(seasons) > 3 else seasons, key="trend_season")
+            with tf2:
+                division_filter = st.multiselect("Division", divisions, default=divisions, key="trend_division")
+            agg = content_engine.aggregate_ats(ats_df, seasons=season_filter, divisions=division_filter)
+            if agg.empty:
+                st.info("No teams match the selected filters.")
+            else:
+                st.dataframe(
+                    agg[["team_name", "division", "record", "cover_pct", "home_ats_wins", "home_ats_losses", "away_ats_wins", "away_ats_losses"]]
+                    .rename(columns={
+                        "team_name": "Team", "division": "Division", "record": "ATS Record", "cover_pct": "Cover %",
+                        "home_ats_wins": "Home W", "home_ats_losses": "Home L", "away_ats_wins": "Away W", "away_ats_losses": "Away L",
+                    }),
+                    hide_index=True, width="stretch",
+                )
+                best, worst = content_engine.best_worst_ats(agg, n=5)
+                bc1, bc2 = st.columns(2)
+                with bc1:
+                    st.markdown("**Best ATS**")
+                    for b in best:
+                        st.write(f"{b['team_name']} — {b['record']} ({b['cover_pct']*100:.0f}%)")
+                with bc2:
+                    st.markdown("**Toughest Fade**")
+                    for w in worst:
+                        st.write(f"{w['team_name']} — {w['record']} ({w['cover_pct']*100:.0f}%)")
+
         tc1, tc2 = st.columns(2)
         with tc1:
             st.markdown(
@@ -1359,7 +1488,10 @@ if tab6.open:
 if tab7.open:
     with tab7:
         section_title("📰", "Preseason Headlines")
-        headlines = [
+        headline_trend_data, _ = load_trend_data()
+        headline_agg = content_engine.aggregate_ats(content_engine.ats_dataframe(headline_trend_data))
+        headlines = content_engine.generate_headlines(headline_agg, [], [])
+        headlines += [
             "<b>FINAL:</b> Panthers 33, Cardinals 30 (Haynes King walk-off TD) — HOF Game Aug 6",
             "Fantasy rankings powered by season-long futures lines",
             "Steel betting live on player props",
