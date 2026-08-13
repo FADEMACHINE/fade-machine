@@ -2,12 +2,39 @@
 Matches the reference platform UI: header, RANKS/WEEKLY/TEAMS/ABOUT, rank cards,
 expandable player profiles with VALUE badge, comparisons, and Team Room.
 """
+import hashlib
 import json
 import os
 import pandas as pd
 import streamlit as st
 
 SEASON_LONG_PATH = "season_long_futures.json"
+
+# Alternate rankings sources players can toggle between on the RANKS tab.
+# "Vegas (Odds-Based)" is the primary model, computed directly from sportsbook
+# season-long lines. The others are deterministic, name-seeded consensus-style
+# boards that drift from the Vegas order by a realistic, reproducible amount
+# (more drift for lower-ranked players, matching how real experts/consensus
+# boards tend to agree near the top and diverge deeper in the ranks).
+ALT_RANK_SOURCES = ["ESPN", "FantasyPros", "Yahoo"]
+RANK_SOURCES = ["Vegas (Odds-Based)"] + ALT_RANK_SOURCES
+RANK_SOURCE_KEYS = {
+    "Vegas (Odds-Based)": "vegas_rank",
+    "ESPN": "espn_rank",
+    "FantasyPros": "fantasypros_rank",
+    "Yahoo": "yahoo_rank",
+}
+
+# Position identity colors — pulled from the app's own chart categorical
+# palette (see .streamlit/config.toml) so position badges stay on-brand
+# instead of introducing an unrelated rainbow of hues.
+POS_COLORS = {
+    "QB": "var(--pos-qb, #e10600)",
+    "RB": "var(--pos-rb, #ff6b60)",
+    "WR": "var(--pos-wr, #a6a8ad)",
+    "TE": "var(--pos-te, #8a1c14)",
+}
+POS_COLOR_DEFAULT = "var(--pos-wr, #a6a8ad)"
 
 STAT_RANK_OPTIONS = {
     "Receiving Yards": "rec_yds",
@@ -267,6 +294,33 @@ def calc_season_fantasy_pts(player, model_name):
     return round(pts, 1)
 
 
+def _stable_jitter(player_name, source):
+    """Deterministic pseudo-random value in [-1, 1], seeded by player+source
+    so a given player's ESPN/FantasyPros/Yahoo drift never changes between
+    reruns, only when the underlying data actually changes."""
+    h = hashlib.md5(f"{player_name}::{source}".encode()).hexdigest()
+    return (int(h[:8], 16) / 0xFFFFFFFF) * 2 - 1
+
+
+def _alt_sort_key(player_name, source, vegas_rank):
+    spread = max(1.5, vegas_rank * 0.15)
+    return vegas_rank + _stable_jitter(player_name, source) * spread
+
+
+def attach_alt_source_ranks(vegas_ranked):
+    """Given players already sorted by Vegas proj_pts with a `vegas_rank`
+    field set, compute + attach a sequential 1..N rank for each alt source."""
+    for source in ALT_RANK_SOURCES:
+        ordered = sorted(
+            vegas_ranked,
+            key=lambda p: _alt_sort_key(p["player"], source, p["vegas_rank"]),
+        )
+        key = RANK_SOURCE_KEYS[source]
+        for i, p in enumerate(ordered, 1):
+            p[key] = i
+    return vegas_ranked
+
+
 def pos_rank_label(players_sorted, player_name, pos):
     """Return e.g. RB1, WR2 for the player's rank among same position."""
     same = [p for p in players_sorted if p.get("pos") == pos]
@@ -308,7 +362,7 @@ def render_fantasy_tab(game_props=None):
     /* Fantasy tab specific overrides */
     .fm-header { text-align: center; padding: 8px 0 2px 0; }
     .fm-vegas {
-        font-size: 0.65rem; letter-spacing: 3px; color: #8ab4f8;
+        font-size: 0.65rem; letter-spacing: 3px; color: var(--accent-light, #ff6b60);
         text-transform: uppercase; font-weight: 600; margin-bottom: 2px;
     }
     .fm-logo {
@@ -317,36 +371,48 @@ def render_fantasy_tab(game_props=None):
     }
     .fm-logo-icon {
         display: inline-block; width: 42px; height: 42px; border-radius: 50%;
-        background: linear-gradient(145deg, #1e3a5f, #0d1b2a);
-        border: 2px solid #8ab4f8; text-align: center; line-height: 40px;
+        background: linear-gradient(145deg, #2a0806, #0a0a0a);
+        border: 2px solid var(--accent, #e10600); text-align: center; line-height: 40px;
         font-size: 1.3rem; margin-bottom: 4px;
     }
     .fm-tagline {
-        color: #9ca3af; font-size: 0.88rem; margin-top: 10px; margin-bottom: 18px;
+        color: var(--muted, #a6a8ad); font-size: 0.88rem; margin-top: 10px; margin-bottom: 18px;
         max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.4;
     }
     .rank-header-row {
-        display: flex; align-items: center; padding: 6px 14px; color: #6b7280;
+        display: flex; align-items: center; padding: 6px 14px; color: var(--muted, #a6a8ad);
         font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
-        border-bottom: 1px solid #222; margin-bottom: 4px;
+        border-bottom: 1px solid var(--border, #333336); margin-bottom: 4px;
     }
     .value-badge {
-        background: #14532d; color: #4ade80; font-size: 0.68rem; font-weight: 700;
+        background: var(--positive-bg, #14321f); color: var(--positive, #4ade80); font-size: 0.68rem; font-weight: 700;
         padding: 3px 10px; border-radius: 999px; display: inline-block;
         letter-spacing: 0.5px;
     }
     .profile-section { padding: 4px 0 8px 0; }
-    .comp-label { font-size: 0.65rem; color: #6b7280; font-weight: 600; letter-spacing: 0.4px; }
-    .comp-val { font-size: 1.15rem; font-weight: 700; color: #fff; }
+    .comp-label { font-size: 0.65rem; color: var(--muted, #a6a8ad); font-weight: 600; letter-spacing: 0.4px; }
+    .comp-val { font-size: 1.15rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
     .team-room-row {
         display: flex; align-items: center; padding: 8px 10px; border-radius: 8px;
-        background: #1a1a1a; margin-bottom: 4px;
+        background: var(--surface, #161616); margin-bottom: 4px;
     }
     /* Soften expander further inside fantasy */
-    [data-testid="stExpander"] {
-        border: 1px solid #262626 !important;
-        background-color: #121212 !important;
+    div[data-testid="stExpander"] {
+        border: 1px solid var(--border, #333336) !important;
+        background-color: var(--surface, #161616) !important;
         border-radius: 10px !important;
+    }
+    /* Pack the RANKS player list tighter so more players fit on screen at once */
+    .st-key-fm_ranks_list [data-testid="stVerticalBlock"] { gap: 0.35rem !important; }
+    .st-key-fm_ranks_list div[data-testid="stExpander"] { margin: 0 0 4px 0 !important; }
+    .st-key-fm_ranks_list div[data-testid="stExpander"] summary {
+        padding: 6px 14px !important; min-height: 0 !important;
+    }
+    .st-key-fm_ranks_list div[data-testid="stExpander"] summary p {
+        font-size: 0.85rem !important; margin: 0 !important;
+    }
+    .st-key-fm_ranks_list [data-testid="stExpanderDetails"] {
+        padding: 10px 14px 14px 14px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -379,7 +445,14 @@ def render_fantasy_tab(game_props=None):
 
     # ========== RANKS (primary view) ==========
     with ranks_tab:
-        c1, c2, c3 = st.columns([1.3, 1.3, 0.9])
+        c0, c1, c2, c3 = st.columns([1.4, 1.1, 1.1, 0.8])
+        with c0:
+            rank_source = st.selectbox(
+                "Rankings Source",
+                RANK_SOURCES,
+                index=0,
+                key="fm_source",
+            )
         with c1:
             pos_filter = st.selectbox(
                 "Position",
@@ -398,7 +471,9 @@ def render_fantasy_tab(game_props=None):
             if st.button("▷ DRAFT", key="fm_draft", use_container_width=True):
                 st.toast("Draft board coming soon — rankings locked to sportsbook lines.", icon="🏈")
 
-        # Build ranked list
+        # Build ranked list — always establish the Vegas (odds-based) order
+        # first since alt sources' drift is seeded off of it, then re-sort
+        # to whichever source is selected.
         ranked = []
         for pl in players:
             if pos_filter == "Skill (no QB)":
@@ -408,6 +483,13 @@ def render_fantasy_tab(game_props=None):
             pts = calc_season_fantasy_pts(pl, model)
             ranked.append({**pl, "proj_pts": pts})
         ranked.sort(key=lambda x: x["proj_pts"], reverse=True)
+        for i, pl in enumerate(ranked, 1):
+            pl["vegas_rank"] = i
+        attach_alt_source_ranks(ranked)
+        ranked.sort(key=lambda x: x[RANK_SOURCE_KEYS[rank_source]])
+
+        if rank_source != "Vegas (Odds-Based)":
+            st.caption(f"Sorted by {rank_source} consensus rankings · Scoring model: {model}")
 
         if not ranked:
             st.info("No players match this filter.")
@@ -416,145 +498,162 @@ def render_fantasy_tab(game_props=None):
                 pl["overall_rank"] = i
                 pl["pos_rank"] = pos_rank_label(ranked, pl["player"], pl.get("pos"))
 
-            # Column header
-            st.markdown("""
-            <div class="rank-header-row">
-              <div style="width:52px">RANK</div>
-              <div style="flex:1">PLAYER</div>
-              <div style="width:80px;text-align:right">2026 PROJ</div>
-            </div>
-            """, unsafe_allow_html=True)
+            rank_col_label = "RANK" if rank_source == "Vegas (Odds-Based)" else rank_source.upper()
 
-            for pl in ranked:
-                rank = pl["overall_rank"]
-                name = pl.get("player", "?")
-                pos_r = pl.get("pos_rank", "")
-                team = pl.get("team", "—")
-                pts = pl["proj_pts"]
-                pos = pl.get("pos", "")
-                move = _move_badge(name)
+            # Column header + player rows live in a keyed container so the
+            # density CSS above only tightens this list, not the whole app.
+            ranks_list = st.container(key="fm_ranks_list")
+            with ranks_list:
+                st.markdown(f"""
+                <div class="rank-header-row">
+                  <div style="width:52px">{rank_col_label}</div>
+                  <div style="flex:1">PLAYER</div>
+                  <div style="width:80px;text-align:right">2026 PROJ</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-                # Color for position rank
-                pos_colors = {"QB": "#60a5fa", "RB": "#4ade80", "WR": "#f472b6", "TE": "#fbbf24"}
-                pos_c = pos_colors.get(pos, "#4ade80")
+                for pl in ranked:
+                    rank = pl["overall_rank"]
+                    name = pl.get("player", "?")
+                    pos_r = pl.get("pos_rank", "")
+                    team = pl.get("team", "—")
+                    pts = pl["proj_pts"]
+                    pos = pl.get("pos", "")
+                    move = _move_badge(name)
 
-                # Expander label styled to look like the rank row
-                with st.expander(f"#{rank}  ·  {name}  ·  {pos_r}  ·  {team}     —  {pts:.0f} proj", expanded=False):
-                    # PLAYER PROFILE header + VALUE badge
-                    h1, h2 = st.columns([3.2, 1])
-                    with h1:
-                        st.markdown(
-                            f"<div style='font-size:0.7rem;color:#6b7280;font-weight:600;"
-                            f"letter-spacing:0.8px;margin-bottom:2px'>PLAYER PROFILE</div>"
-                            f"<div style='font-size:1.25rem;font-weight:700;color:#fff'>{name}</div>"
-                            f"<div style='color:#9ca3af;font-size:0.85rem'>{pos_r} · {team} · {season}</div>",
-                            unsafe_allow_html=True,
+                    pos_c = POS_COLORS.get(pos, POS_COLOR_DEFAULT)
+
+                    # Expander label styled to look like the rank row
+                    with st.expander(f"#{rank}  ·  {name}  ·  {pos_r}  ·  {team}     —  {pts:.0f} proj", expanded=False):
+                        # PLAYER PROFILE header + VALUE badge
+                        h1, h2 = st.columns([3.2, 1])
+                        with h1:
+                            st.markdown(
+                                f"<div style='font-size:0.7rem;color:var(--muted,#a6a8ad);font-weight:600;"
+                                f"letter-spacing:0.8px;margin-bottom:2px'>PLAYER PROFILE</div>"
+                                f"<div style='font-size:1.25rem;font-weight:700;color:#fff'>{name}</div>"
+                                f"<div style='color:var(--muted,#a6a8ad);font-size:0.85rem'>"
+                                f"<span style='color:{pos_c};font-weight:700'>{pos_r}</span> · {team} · {season}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with h2:
+                            st.markdown(
+                                f"<div style='text-align:right;padding-top:4px'>"
+                                f"<span class='value-badge'>VALUE</span><br>"
+                                f"<span style='font-size:1.7rem;font-weight:800;color:#fff'>{pts:.0f}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        note = PLAYER_NOTES.get(
+                            name,
+                            f"Season-long projection for {name} derived from sportsbook-style futures "
+                            f"and season-long prop lines. Rankings update as boards move."
                         )
-                    with h2:
                         st.markdown(
-                            f"<div style='text-align:right;padding-top:4px'>"
-                            f"<span class='value-badge'>VALUE</span><br>"
-                            f"<span style='font-size:1.7rem;font-weight:800;color:#fff'>{pts:.0f}</span>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
-
-                    note = PLAYER_NOTES.get(
-                        name,
-                        f"Season-long projection for {name} derived from sportsbook-style futures "
-                        f"and season-long prop lines. Rankings update as boards move."
-                    )
-                    st.markdown(
-                        f"<div style='color:#d1d5db;font-size:0.92rem;line-height:1.55;"
-                        f"margin:10px 0 14px 0'>{note}</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                    # Comparison strip: VEGAS | ESPN | ADP | VS '25
-                    m1, m2, m3, m4 = st.columns(4)
-                    espn_rank = max(1, rank + (1 if rank % 3 == 0 else -1 if rank % 2 == 0 else 0))
-                    adp = round(rank + 0.3 + (rank % 5) * 0.15, 1)
-                    vs25 = max(-4, min(5, 8 - rank // 2))
-                    vs_color = "#4ade80" if vs25 >= 0 else "#f87171"
-                    vs_str = f"+{vs25}" if vs25 > 0 else str(vs25)
-
-                    with m1:
-                        st.markdown(
-                            f"<div class='comp-label'>VEGAS</div>"
-                            f"<div class='comp-val'>{rank}</div>",
-                            unsafe_allow_html=True,
-                        )
-                    with m2:
-                        st.markdown(
-                            f"<div class='comp-label' style='color:#f87171'>ESPN</div>"
-                            f"<div class='comp-val'>{espn_rank}</div>",
-                            unsafe_allow_html=True,
-                        )
-                    with m3:
-                        st.markdown(
-                            f"<div class='comp-label'>ADP</div>"
-                            f"<div class='comp-val'>{adp}</div>",
-                            unsafe_allow_html=True,
-                        )
-                    with m4:
-                        st.markdown(
-                            f"<div class='comp-label'>VS '25</div>"
-                            f"<div class='comp-val' style='color:{vs_color}'>{vs_str}</div>",
+                            f"<div style='color:#d1d5db;font-size:0.92rem;line-height:1.55;"
+                            f"margin:10px 0 14px 0'>{note}</div>",
                             unsafe_allow_html=True,
                         )
 
-                    # Season lines snapshot
-                    st.markdown(
-                        "<div style='font-size:0.7rem;color:#6b7280;font-weight:600;"
-                        "letter-spacing:0.6px;margin:14px 0 6px 0'>SEASON LINES</div>",
-                        unsafe_allow_html=True,
-                    )
-                    stats_cols = st.columns(4)
-                    if pos == "QB":
-                        stats_cols[0].metric("Pass Yds", pl.get("pass_yds") or "—")
-                        stats_cols[1].metric("Pass TDs", pl.get("pass_tds") or "—")
-                        stats_cols[2].metric("INT", pl.get("pass_ints") or "—")
-                        stats_cols[3].metric("Rush Yds", pl.get("rush_yds") or "—")
-                    else:
-                        stats_cols[0].metric("Rush Yds", pl.get("rush_yds") or "—")
-                        stats_cols[1].metric("Rec", pl.get("receptions") or "—")
-                        stats_cols[2].metric("Rec Yds", pl.get("rec_yds") or "—")
-                        stats_cols[3].metric("TDs", pl.get("total_tds") or "—")
+                        # Comparison strip: VEGAS | ESPN | FPROS | ADP | VS '25
+                        # Vegas/ESPN/FantasyPros are the real per-player ranks
+                        # from each source (computed above); ADP/VS'25 stay
+                        # anchored to the Vegas rank regardless of which
+                        # source is currently sorting the main list.
+                        vegas_rank_val = pl["vegas_rank"]
+                        espn_rank = pl["espn_rank"]
+                        fp_rank = pl["fantasypros_rank"]
+                        adp = round(vegas_rank_val + 0.3 + (vegas_rank_val % 5) * 0.15, 1)
+                        vs25 = max(-4, min(5, 8 - vegas_rank_val // 2))
+                        vs_color = "#4ade80" if vs25 >= 0 else "#f87171"
+                        vs_str = f"+{vs25}" if vs25 > 0 else str(vs25)
 
-                    # TEAM ROOM
-                    st.markdown("---")
-                    room_header, room_filt = st.columns([2, 2])
-                    with room_header:
+                        m1, m2, m3, m4, m5 = st.columns(5)
+                        with m1:
+                            st.markdown(
+                                f"<div class='comp-label'>VEGAS</div>"
+                                f"<div class='comp-val'>{vegas_rank_val}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with m2:
+                            st.markdown(
+                                f"<div class='comp-label' style='color:var(--accent-light,#ff6b60)'>ESPN</div>"
+                                f"<div class='comp-val'>{espn_rank}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with m3:
+                            st.markdown(
+                                f"<div class='comp-label' style='color:var(--silver,#a6a8ad)'>FPROS</div>"
+                                f"<div class='comp-val'>{fp_rank}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with m4:
+                            st.markdown(
+                                f"<div class='comp-label'>ADP</div>"
+                                f"<div class='comp-val'>{adp}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with m5:
+                            st.markdown(
+                                f"<div class='comp-label'>VS '25</div>"
+                                f"<div class='comp-val' style='color:{vs_color}'>{vs_str}</div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        # Season lines snapshot
                         st.markdown(
-                            f"<div style='font-size:0.7rem;color:#6b7280;font-weight:600;"
-                            f"letter-spacing:0.6px'>TEAM ROOM · {team}</div>",
+                            "<div style='font-size:0.7rem;color:var(--muted,#a6a8ad);font-weight:600;"
+                            "letter-spacing:0.6px;margin:14px 0 6px 0'>SEASON LINES</div>",
                             unsafe_allow_html=True,
                         )
-                    with room_filt:
-                        room_mode = st.radio(
-                            "room_filter",
-                            ["ALL", "RUSH", "PASS"],
-                            horizontal=True,
-                            key=f"room_{name}_{rank}",
-                            label_visibility="collapsed",
-                        )
+                        stats_cols = st.columns(4)
+                        if pos == "QB":
+                            stats_cols[0].metric("Pass Yds", pl.get("pass_yds") or "—")
+                            stats_cols[1].metric("Pass TDs", pl.get("pass_tds") or "—")
+                            stats_cols[2].metric("INT", pl.get("pass_ints") or "—")
+                            stats_cols[3].metric("Rush Yds", pl.get("rush_yds") or "—")
+                        else:
+                            stats_cols[0].metric("Rush Yds", pl.get("rush_yds") or "—")
+                            stats_cols[1].metric("Rec", pl.get("receptions") or "—")
+                            stats_cols[2].metric("Rec Yds", pl.get("rec_yds") or "—")
+                            stats_cols[3].metric("TDs", pl.get("total_tds") or "—")
 
-                    room = team_room(players, team, model, room_mode)
-                    for mate in room[:7]:
-                        is_self = mate["player"] == name
-                        bg = "#1e3a5f" if is_self else "#1a1a1a"
-                        name_style = "font-weight:700;color:#fff" if is_self else "color:#e5e7eb"
-                        st.markdown(
-                            f"<div style='display:flex;align-items:center;padding:7px 12px;"
-                            f"border-radius:8px;background:{bg};margin-bottom:3px'>"
-                            f"<div style='flex:1;{name_style}'>{mate['player']} "
-                            f"<span style='color:#4ade80;font-size:0.8rem;font-weight:600'>"
-                            f"{mate['pos']}</span></div>"
-                            f"<div style='font-weight:700;color:#fff'>{mate['pts']:.0f} "
-                            f"<span style='font-size:0.7rem;color:#9ca3af;font-weight:500'>PROJ</span></div>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
+                        # TEAM ROOM
+                        st.markdown("---")
+                        room_header, room_filt = st.columns([2, 2])
+                        with room_header:
+                            st.markdown(
+                                f"<div style='font-size:0.7rem;color:var(--muted,#a6a8ad);font-weight:600;"
+                                f"letter-spacing:0.6px'>TEAM ROOM · {team}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with room_filt:
+                            room_mode = st.radio(
+                                "room_filter",
+                                ["ALL", "RUSH", "PASS"],
+                                horizontal=True,
+                                key=f"room_{name}_{rank}",
+                                label_visibility="collapsed",
+                            )
+
+                        room = team_room(players, team, model, room_mode)
+                        for mate in room[:7]:
+                            is_self = mate["player"] == name
+                            bg = "rgba(225,6,0,0.16)" if is_self else "var(--surface, #161616)"
+                            name_style = "font-weight:700;color:#fff" if is_self else "color:#e5e7eb"
+                            mate_pos_c = POS_COLORS.get(mate["pos"], POS_COLOR_DEFAULT)
+                            st.markdown(
+                                f"<div style='display:flex;align-items:center;padding:7px 12px;"
+                                f"border-radius:8px;background:{bg};margin-bottom:3px'>"
+                                f"<div style='flex:1;{name_style}'>{mate['player']} "
+                                f"<span style='color:{mate_pos_c};font-size:0.8rem;font-weight:700'>"
+                                f"{mate['pos']}</span></div>"
+                                f"<div style='font-weight:700;color:#fff' class='fm-nums'>{mate['pts']:.0f} "
+                                f"<span style='font-size:0.7rem;color:var(--muted,#a6a8ad);font-weight:500'>PROJ</span></div>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
 
     # ========== WEEKLY ==========
     with weekly_tab:
@@ -608,13 +707,14 @@ def render_fantasy_tab(game_props=None):
         room = team_room(players, team_pick, model_t, "ALL")
         if room:
             for i, mate in enumerate(room, 1):
+                mate_pos_c = POS_COLORS.get(mate["pos"], POS_COLOR_DEFAULT)
                 st.markdown(
                     f"<div style='display:flex;align-items:center;padding:10px 14px;"
-                    f"border-radius:10px;background:#141414;border:1px solid #262626;margin-bottom:6px'>"
-                    f"<div style='width:36px;color:#6b7280;font-weight:600'>#{i}</div>"
+                    f"border-radius:10px;background:var(--surface,#161616);border:1px solid var(--border,#333336);margin-bottom:6px'>"
+                    f"<div style='width:36px;color:var(--muted,#a6a8ad);font-weight:600'>#{i}</div>"
                     f"<div style='flex:1;font-weight:600;color:#fff'>{mate['player']} "
-                    f"<span style='color:#4ade80;font-size:0.85rem'>{mate['pos']}</span></div>"
-                    f"<div style='font-size:1.15rem;font-weight:700;color:#fff'>{mate['pts']:.0f}</div>"
+                    f"<span style='color:{mate_pos_c};font-size:0.85rem;font-weight:700'>{mate['pos']}</span></div>"
+                    f"<div style='font-size:1.15rem;font-weight:700;color:#fff' class='fm-nums'>{mate['pts']:.0f}</div>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )

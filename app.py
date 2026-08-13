@@ -16,54 +16,120 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .stApp, [data-testid="stAppViewContainer"] {
-        background-color: #0d0d0d !important;
-        color: #ffffff !important;
+    /* ===== Design tokens — mirrors .streamlit/config.toml so custom CSS never
+       drifts from the native theme's black/silver/red system ===== */
+    :root {
+        --bg: #0a0a0a;
+        --surface: #161616;
+        --surface-raised: #1c1c1c;
+        --border: #333336;
+        --text: #f5f5f5;
+        --muted: #a6a8ad;
+        --muted-dim: #7d7f84;
+        --accent: #e10600;
+        --accent-light: #ff6b60;
+        --accent-dark: #8a1c14;
+        --accent-bg: #2a0806;
+        --silver: #a6a8ad;
+        --positive: #4ade80;
+        --positive-bg: #14321f;
+        --negative: #f87171;
+        /* Position identity colors — pulled from the theme's own chart
+           categorical palette so badges stay on-brand instead of introducing
+           an unrelated rainbow of hues. */
+        --pos-qb: #e10600;
+        --pos-rb: #ff6b60;
+        --pos-wr: #a6a8ad;
+        --pos-te: #8a1c14;
     }
-    body, p, span, div, label, .stMarkdown, .stText,
+    .stApp, [data-testid="stAppViewContainer"] {
+        background-color: var(--bg) !important;
+        color: var(--text) !important;
+    }
+    /* Deliberately excludes span/div: those tags host per-badge/per-value
+       custom colors (position badges, VALUE pill, over/under, rank deltas)
+       throughout Betting/Props/Fantasy. Forcing them white here with
+       !important silently flattened every one of those colors — text and
+       label containers still need the override to fight Streamlit's own
+       inline styles, but span/div should just inherit like normal CSS. */
+    body, p, label, .stMarkdown, .stText,
     [data-testid="stMarkdownContainer"],
     [data-testid="stWidgetLabel"] {
-        color: #ffffff !important;
+        color: var(--text) !important;
     }
-    h1, h2, h3, h4, h5, h6 { color: #ffffff !important; }
-    [data-testid="stSidebar"] { background-color: #1a1a1a !important; }
-    [data-testid="stSidebar"] * { color: #ffffff !important; }
-    .stTabs [data-baseweb="tab-list"] { background-color: #1a1a1a; gap: 4px; flex-wrap: wrap; }
-    .stTabs [data-baseweb="tab"] { color: #cccccc !important; padding: 10px 12px !important; font-size: 0.85rem !important; }
-    .stTabs [aria-selected="true"] { color: #e10600 !important; border-bottom: 2px solid #e10600; }
+    h1, h2, h3, h4, h5, h6 { color: var(--text) !important; }
+    [data-testid="stSidebar"] { background-color: var(--surface) !important; }
+    [data-testid="stSidebar"] * { color: var(--text) !important; }
+    .stTabs [data-baseweb="tab-list"] { background-color: var(--surface); gap: 4px; flex-wrap: wrap; }
+    .stTabs [data-baseweb="tab"] { color: var(--muted) !important; padding: 10px 12px !important; font-size: 0.85rem !important; }
+    .stTabs [aria-selected="true"] { color: var(--accent) !important; border-bottom: 2px solid var(--accent); }
     .stButton > button {
-        background-color: #e10600 !important; color: #ffffff !important; border: none;
+        background-color: var(--accent) !important; color: #ffffff !important; border: none;
         min-height: 44px !important; padding: 0.6rem 1.2rem !important; font-size: 1rem !important; border-radius: 8px !important;
     }
-    .stCaptionContainer { color: #aaaaaa !important; }
+    .stCaptionContainer { color: var(--muted) !important; }
     div[data-testid="stExpander"] {
-        border: 1px solid #2a2a2a !important; border-radius: 10px !important;
-        background-color: #141414 !important; margin-top: 8px; margin-bottom: 16px;
+        border: 1px solid var(--border) !important; border-radius: 10px !important;
+        background-color: var(--surface) !important; margin-top: 8px; margin-bottom: 16px;
     }
     div[data-testid="stExpander"] summary,
     div[data-testid="stExpander"] summary span,
-    div[data-testid="stExpander"] summary p { color: #ffffff !important; font-weight: 600 !important; font-size: 0.95rem !important; }
-    div[data-testid="stExpander"] svg { fill: #cccccc !important; }
+    div[data-testid="stExpander"] summary p { color: var(--text) !important; font-weight: 600 !important; font-size: 0.95rem !important; }
+    div[data-testid="stExpander"] svg { fill: var(--muted) !important; }
     @media (max-width: 768px) {
         .stTabs [data-baseweb="tab"] { font-size: 0.75rem !important; padding: 8px 6px !important; }
         h1 { font-size: 1.6rem !important; }
         h2 { font-size: 1.3rem !important; }
         h3 { font-size: 1.1rem !important; }
     }
-    [data-testid="stMetricValue"] { color: #ffffff !important; font-size: 1.4rem !important; }
-    [data-testid="stMetricLabel"] { color: #cccccc !important; }
+    [data-testid="stMetricValue"] { color: var(--text) !important; font-size: 1.4rem !important; font-variant-numeric: tabular-nums; }
+    [data-testid="stMetricLabel"] { color: var(--muted) !important; }
     .steel-balance-bar {
-        border: 2px solid #e10600; border-radius: 10px; background-color: rgba(225, 6, 0, 0.18);
+        border: 2px solid var(--accent); border-radius: 10px; background-color: rgba(225, 6, 0, 0.18);
         padding: 10px 18px; display: inline-block; text-align: right; min-width: 140px;
     }
-    .steel-balance-bar .steel-label { font-size: 0.7rem; color: #ffffff !important; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
-    .steel-balance-bar .steel-amount { font-size: 1.25rem; color: #ffffff !important; font-weight: 700; line-height: 1.3; }
+    .steel-balance-bar .steel-label { font-size: 0.7rem; color: var(--text) !important; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .steel-balance-bar .steel-amount { font-size: 1.25rem; color: var(--text) !important; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
+
+    /* ===== Shared card / badge components (Betting, Trends, Props) ===== */
+    .fm-badge {
+        display: inline-block; padding: 3px 10px; border-radius: 999px;
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+        white-space: nowrap;
+    }
+    /* !important throughout: a global `span, div { color: var(--text) !important }`
+       rule earlier in this block otherwise wins over these more specific
+       classes and flattens every badge back to plain white text. */
+    .fm-badge-week { background: var(--surface-raised); color: var(--muted) !important; border: 1px solid var(--border); }
+    .fm-badge-over { background: var(--positive-bg); color: var(--positive) !important; }
+    .fm-badge-under { background: var(--accent-bg); color: var(--accent-light) !important; }
+    .fm-badge-pos {
+        background: rgba(255,255,255,0.06); font-weight: 800; letter-spacing: 0.6px;
+        border: 1px solid currentColor;
+    }
+    .fm-badge-pos-qb { color: var(--pos-qb) !important; }
+    .fm-badge-pos-rb { color: var(--pos-rb) !important; }
+    .fm-badge-pos-wr { color: var(--pos-wr) !important; }
+    .fm-badge-pos-te { color: var(--pos-te) !important; }
+    .fm-nums { font-variant-numeric: tabular-nums; }
+    .fm-stat-card {
+        background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 14px 16px; height: 100%;
+    }
+    .fm-stat-card .fm-stat-label {
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+        color: var(--muted) !important; margin-bottom: 6px;
+    }
+    .fm-stat-card .fm-stat-body { color: var(--text) !important; font-size: 0.92rem; line-height: 1.5; }
+    /* Touch/interaction spacing: keep adjacent radio + tag targets from crowding */
+    div[data-baseweb="radio"] { gap: 10px !important; }
+    span[data-baseweb="tag"] { margin: 2px 4px 2px 0 !important; }
 
     /* ===== Dropdown / Select visibility (high contrast) ===== */
     div[data-baseweb="select"] > div,
     div[data-baseweb="select"] > div > div {
-        background-color: #1f1f1f !important;
-        border: 1.5px solid #e10600 !important;
+        background-color: var(--surface-raised) !important;
+        border: 1.5px solid var(--accent) !important;
         border-radius: 8px !important;
         color: #ffffff !important;
         min-height: 42px !important;
@@ -76,24 +142,24 @@ st.markdown("""
     ul[role="listbox"],
     div[data-baseweb="popover"] div[data-baseweb="menu"],
     div[role="listbox"] {
-        background-color: #1a1a1a !important;
-        border: 1.5px solid #e10600 !important;
+        background-color: var(--surface) !important;
+        border: 1.5px solid var(--accent) !important;
         border-radius: 8px !important;
     }
     li[role="option"],
     div[role="option"] {
         color: #ffffff !important;
-        background-color: #1a1a1a !important;
+        background-color: var(--surface) !important;
     }
     li[role="option"]:hover,
     div[role="option"]:hover,
     li[aria-selected="true"] {
-        background-color: #e10600 !important;
+        background-color: var(--accent) !important;
         color: #ffffff !important;
     }
     /* Multiselect tags */
     span[data-baseweb="tag"] {
-        background-color: #e10600 !important;
+        background-color: var(--accent) !important;
         color: #ffffff !important;
         border: none !important;
     }
@@ -943,20 +1009,54 @@ if tab1.open:
                 header = f"{week_prefix}{g['away']} @ {g['home']}  ·  {fmt_kickoff(g['commence_time'])}"
                 with st.expander(header, expanded=(i == 0)):
                     if books:
+                        st.markdown(
+                            f"<span class='fm-badge fm-badge-week'>{g['week']}</span> "
+                            f"<span class='fm-badge fm-badge-week fm-nums'>{fmt_kickoff(g['commence_time'])}</span> "
+                            f"<span class='fm-badge fm-badge-week'>{len(books)} book{'s' if len(books) != 1 else ''}</span>"
+                            f"<div style='margin-top:8px'></div>",
+                            unsafe_allow_html=True,
+                        )
                         rows = []
-                        for b in books:
+                        # Track raw numeric prices per column so the best price
+                        # for the bettor can be highlighted — a standard
+                        # odds-comparison pattern on real sportsbook boards.
+                        raw_prices = {"ML Away": {}, "ML Home": {}, "Spread Away": {}, "Spread Home": {}, "Total O": {}, "Total U": {}}
+                        for idx, b in enumerate(books):
                             row = {"Sportsbook": b["title"]}
                             if "h2h" in b:
                                 row["ML Away"] = fmt_odds(b["h2h"]["away"])
                                 row["ML Home"] = fmt_odds(b["h2h"]["home"])
+                                raw_prices["ML Away"][idx] = b["h2h"]["away"]
+                                raw_prices["ML Home"][idx] = b["h2h"]["home"]
                             if "spreads" in b:
                                 row["Spread Away"] = f"{b['spreads']['away']['point']:+g} ({fmt_odds(b['spreads']['away']['price'])})"
                                 row["Spread Home"] = f"{b['spreads']['home']['point']:+g} ({fmt_odds(b['spreads']['home']['price'])})"
+                                raw_prices["Spread Away"][idx] = b["spreads"]["away"]["price"]
+                                raw_prices["Spread Home"][idx] = b["spreads"]["home"]["price"]
                             if "totals" in b:
                                 row["Total O"] = f"O {b['totals']['over']['point']} ({fmt_odds(b['totals']['over']['price'])})"
                                 row["Total U"] = f"U {b['totals']['under']['point']} ({fmt_odds(b['totals']['under']['price'])})"
+                                raw_prices["Total O"][idx] = b["totals"]["over"]["price"]
+                                raw_prices["Total U"][idx] = b["totals"]["under"]["price"]
                             rows.append(row)
-                        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+                        odds_df = pd.DataFrame(rows)
+
+                        def _highlight_best_price(df):
+                            styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                            for col, valmap in raw_prices.items():
+                                if col not in df.columns or not valmap:
+                                    continue
+                                best = max(valmap.values())
+                                for idx, v in valmap.items():
+                                    if v == best:
+                                        styles.loc[idx, col] = "color: #4ade80; font-weight: 800;"
+                            return styles
+
+                        st.dataframe(
+                            odds_df.style.apply(_highlight_best_price, axis=None),
+                            hide_index=True, width="stretch",
+                        )
+                        st.caption("Green = best price for that side across all books shown.")
                     else:
                         st.caption("No sportsbook lines available for this game yet.")
                     render_game_bet_ui(g, f"gamebet_{i}", use_expander=False)
@@ -979,8 +1079,26 @@ if tab4.open:
     with tab4:
         st.header("📈 Trends")
         st.caption("Season-long and weekly trend snapshots")
-        st.write("• HOF Game: Panthers 33, Cardinals 30 (Haynes King walk-off)")
-        st.write("• Fantasy rankings update from season-long futures JSON")
+        tc1, tc2 = st.columns(2)
+        with tc1:
+            st.markdown(
+                "<div class='fm-stat-card'>"
+                "<div class='fm-stat-label'>HOF Game Result</div>"
+                "<div class='fm-stat-body'>"
+                "<span class='fm-nums' style='font-size:1.15rem;font-weight:700'>Panthers 33, Cardinals 30</span><br>"
+                "Haynes King walk-off TD"
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
+        with tc2:
+            st.markdown(
+                "<div class='fm-stat-card'>"
+                "<div class='fm-stat-label'>Fantasy Rankings</div>"
+                "<div class='fm-stat-body'>Update automatically from the season-long "
+                "futures dataset — see the Fantasy tab for the live board.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
 if tab5.open:
     with tab5:
@@ -1013,9 +1131,19 @@ if tab5.open:
         else:
             st.markdown("### Prop cards")
             for i, p in enumerate(filtered):
-                summary = f"**{p['player']}** · {p.get('pos','')} · {p['market']} · **{p['line']}**  |  O {p.get('over','—')} / U {p.get('under','—')}"
+                pos = (p.get("pos") or "").upper()
+                summary = f"{p['player']} · {pos} · {p['market']} · {p['line']}  |  O {p.get('over','—')} / U {p.get('under','—')}"
                 with st.expander(summary, expanded=False):
-                    st.caption(f"{p.get('team','')} · {p.get('game','')}")
+                    pos_class = f"fm-badge-pos-{pos.lower()}" if pos.lower() in ("qb", "rb", "wr", "te") else "fm-badge-pos-wr"
+                    st.markdown(
+                        f"<span class='fm-badge fm-badge-pos {pos_class}'>{pos or '—'}</span> "
+                        f"<span class='fm-badge fm-badge-week'>{p.get('team','')} · {p.get('game','')}</span> "
+                        f"<span class='fm-badge fm-badge-week fm-nums'>Line {p['line']}</span> "
+                        f"<span class='fm-badge fm-badge-over'>O {p.get('over','—')}</span> "
+                        f"<span class='fm-badge fm-badge-under'>U {p.get('under','—')}</span>"
+                        f"<div style='margin-top:10px'></div>",
+                        unsafe_allow_html=True,
+                    )
                     render_prop_bet_ui(p, f"propbet_{i}", use_expander=False)
 
 if tab6.open:
