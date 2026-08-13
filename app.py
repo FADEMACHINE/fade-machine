@@ -16,8 +16,13 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600;700&display=swap');
+
     /* ===== Design tokens — mirrors .streamlit/config.toml so custom CSS never
-       drifts from the native theme's black/silver/red system ===== */
+       drifts from the native theme's black/silver/red system =====
+       Typography: Oswald (display/impact — headers, tabs, buttons, wordmarks),
+       Inter (body — set via config.toml's `font`), Roboto Mono (odds/stat
+       figures — sportsbook-style tabular precision). */
     :root {
         --bg: #0a0a0a;
         --surface: #161616;
@@ -34,6 +39,13 @@ st.markdown("""
         --positive: #4ade80;
         --positive-bg: #14321f;
         --negative: #f87171;
+        /* Secondary accent — echoes the molten-gold glow in the FADE MACHINE
+           brand mark on X. Used sparingly for premium/highlight moments only
+           (VALUE badge, hero glow) so it reads as an accent, not a second
+           primary color competing with red. */
+        --gold: #f0b429;
+        --gold-light: #fbd97a;
+        --gold-glow: rgba(240, 180, 41, 0.35);
         /* Position identity colors — pulled from the theme's own chart
            categorical palette so badges stay on-brand instead of introducing
            an unrelated rainbow of hues. */
@@ -41,6 +53,11 @@ st.markdown("""
         --pos-rb: #ff6b60;
         --pos-wr: #a6a8ad;
         --pos-te: #8a1c14;
+        --font-display: 'Oswald', 'Inter', sans-serif;
+        --font-mono: 'Roboto Mono', ui-monospace, monospace;
+        --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+        --space-5: 24px; --space-6: 32px;
+        --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
     }
     .stApp, [data-testid="stAppViewContainer"] {
         background-color: var(--bg) !important;
@@ -57,39 +74,136 @@ st.markdown("""
     [data-testid="stWidgetLabel"] {
         color: var(--text) !important;
     }
-    h1, h2, h3, h4, h5, h6 { color: var(--text) !important; }
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--text) !important;
+        font-family: var(--font-display) !important;
+        letter-spacing: 0.3px;
+    }
     [data-testid="stSidebar"] { background-color: var(--surface) !important; }
     [data-testid="stSidebar"] * { color: var(--text) !important; }
-    .stTabs [data-baseweb="tab-list"] { background-color: var(--surface); gap: 4px; flex-wrap: wrap; }
-    .stTabs [data-baseweb="tab"] { color: var(--muted) !important; padding: 10px 12px !important; font-size: 0.85rem !important; }
-    .stTabs [aria-selected="true"] { color: var(--accent) !important; border-bottom: 2px solid var(--accent); }
-    .stButton > button {
-        background-color: var(--accent) !important; color: #ffffff !important; border: none;
-        min-height: 44px !important; padding: 0.6rem 1.2rem !important; font-size: 1rem !important; border-radius: 8px !important;
+
+    /* ===== Tab bar: 9 tabs need to scroll, not wrap into a 3-row mess.
+       flex-wrap:nowrap + overflow-x:auto turns it into one clean swipeable
+       row (native scrollbar hidden, edge fade hints more content). Active
+       tab is a filled pill instead of a thin underline — much easier to
+       spot at a glance with this many items.
+       Selectors target [data-testid="stTab"]/[role="tablist"] — this
+       Streamlit version (1.61, react-aria based) does NOT use the older
+       [data-baseweb="tab"] BaseWeb markup; that selector silently matched
+       nothing here. ===== */
+    [data-testid="stTabs"] [role="tablist"] {
+        background-color: var(--surface);
+        gap: 6px; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+        scrollbar-width: none; -ms-overflow-style: none;
+        -webkit-overflow-scrolling: touch;
+        padding: 4px; border-radius: var(--radius-md);
+        mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
     }
+    [data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
+    [data-testid="stTab"] {
+        color: var(--muted) !important; padding: 10px 16px !important; font-size: 0.85rem !important;
+        font-family: var(--font-display) !important; font-weight: 600 !important;
+        letter-spacing: 0.4px; text-transform: uppercase;
+        white-space: nowrap; flex-shrink: 0; min-height: 44px;
+        border-radius: var(--radius-sm) !important; border-bottom: none !important;
+        transition: background-color 150ms ease, color 150ms ease;
+    }
+    [data-testid="stTab"] p { font-family: var(--font-display) !important; font-weight: 600 !important; letter-spacing: 0.4px; text-transform: uppercase; }
+    [data-testid="stTab"]:hover { background: rgba(255,255,255,0.06); color: var(--text) !important; }
+    [data-testid="stTab"][aria-selected="true"] {
+        color: #ffffff !important; background: var(--accent) !important;
+        box-shadow: 0 2px 10px rgba(225,6,0,0.4);
+    }
+    [data-testid="stTab"][aria-selected="true"] p { color: #ffffff !important; }
+    [data-testid="stTab"][aria-selected="true"]:hover { background: var(--accent) !important; }
+
+    /* ===== Buttons: bigger, bolder, gradient + glow instead of a flat fill ===== */
+    .stButton > button {
+        background: linear-gradient(180deg, #ff3020 0%, var(--accent) 55%, #b30500 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.14) !important;
+        min-height: 48px !important; padding: 0.7rem 1.6rem !important;
+        font-family: var(--font-display) !important; font-size: 0.95rem !important; font-weight: 600 !important;
+        letter-spacing: 0.7px !important; text-transform: uppercase !important;
+        border-radius: var(--radius-md) !important;
+        box-shadow: 0 4px 14px rgba(225,6,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+        transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease !important;
+    }
+    .stButton > button:hover {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(225,6,0,0.45), inset 0 1px 0 rgba(255,255,255,0.22) !important;
+    }
+    .stButton > button:active { transform: translateY(0); filter: brightness(0.95); }
+    .stButton > button[kind="secondary"] {
+        background: var(--surface-raised) !important; color: var(--text) !important;
+        border: 1.5px solid var(--border) !important; box-shadow: none !important;
+    }
+    .stButton > button[kind="secondary"]:hover { border-color: var(--accent) !important; }
+
     .stCaptionContainer { color: var(--muted) !important; }
     div[data-testid="stExpander"] {
-        border: 1px solid var(--border) !important; border-radius: 10px !important;
+        border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important;
         background-color: var(--surface) !important; margin-top: 8px; margin-bottom: 16px;
+        transition: border-color 150ms ease;
     }
+    div[data-testid="stExpander"]:hover { border-color: #4a4a4e !important; }
     div[data-testid="stExpander"] summary,
     div[data-testid="stExpander"] summary span,
     div[data-testid="stExpander"] summary p { color: var(--text) !important; font-weight: 600 !important; font-size: 0.95rem !important; }
     div[data-testid="stExpander"] svg { fill: var(--muted) !important; }
     @media (max-width: 768px) {
-        .stTabs [data-baseweb="tab"] { font-size: 0.75rem !important; padding: 8px 6px !important; }
+        [data-testid="stTab"] { font-size: 0.78rem !important; padding: 10px 12px !important; }
         h1 { font-size: 1.6rem !important; }
         h2 { font-size: 1.3rem !important; }
         h3 { font-size: 1.1rem !important; }
+        /* Force every multi-column row (hero, filter rows, Props grid, the
+           comparison strip) to stack instead of squeezing N columns into a
+           phone-width screen. Applied explicitly rather than relying on
+           Streamlit's own responsive behavior, which this environment had
+           no reliable way to verify empirically. */
+        [data-testid="stHorizontalBlock"] { flex-direction: column !important; }
+        [data-testid="stHorizontalBlock"] [data-testid="stColumn"] {
+            width: 100% !important; flex: 1 1 100% !important;
+        }
     }
-    [data-testid="stMetricValue"] { color: var(--text) !important; font-size: 1.4rem !important; font-variant-numeric: tabular-nums; }
+    [data-testid="stMetricValue"] { color: var(--text) !important; font-size: 1.4rem !important; font-family: var(--font-mono) !important; }
     [data-testid="stMetricLabel"] { color: var(--muted) !important; }
+
+    /* ===== Hero: premium "steel plate" chip instead of a flat outlined box ===== */
     .steel-balance-bar {
-        border: 2px solid var(--accent); border-radius: 10px; background-color: rgba(225, 6, 0, 0.18);
-        padding: 10px 18px; display: inline-block; text-align: right; min-width: 140px;
+        border: 1px solid var(--accent); border-radius: var(--radius-md);
+        background: linear-gradient(145deg, rgba(225,6,0,0.24), rgba(225,6,0,0.05) 70%);
+        padding: 10px 20px; display: inline-flex; flex-direction: column; align-items: flex-end;
+        min-width: 150px; box-shadow: 0 4px 18px rgba(225,6,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06);
     }
-    .steel-balance-bar .steel-label { font-size: 0.7rem; color: var(--text) !important; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
-    .steel-balance-bar .steel-amount { font-size: 1.25rem; color: var(--text) !important; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
+    .steel-balance-bar .steel-label {
+        font-family: var(--font-display); font-size: 0.68rem; color: var(--muted) !important;
+        font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+    }
+    .steel-balance-bar .steel-amount {
+        font-family: var(--font-mono); font-size: 1.5rem; color: var(--text) !important;
+        font-weight: 700; line-height: 1.3;
+    }
+
+    /* ===== Fade-bar divider — the app's signature section separator ===== */
+    .fade-divider {
+        height: 3px; border-radius: 999px; margin: 10px 0 22px 0;
+        background: linear-gradient(90deg, var(--gold) 0%, var(--accent) 35%, var(--accent) 70%, transparent 100%);
+    }
+    .fm-section-title {
+        display: flex; align-items: center; gap: 10px; margin-top: 4px;
+    }
+    .fm-section-title .fm-section-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 38px; height: 38px; border-radius: var(--radius-sm);
+        background: linear-gradient(145deg, rgba(225,6,0,0.28), rgba(225,6,0,0.06));
+        border: 1px solid var(--accent); font-size: 1.15rem; flex-shrink: 0;
+    }
+    .fm-section-title h2 {
+        margin: 0 !important; font-size: 1.6rem !important; text-transform: uppercase; letter-spacing: 0.5px;
+    }
 
     /* ===== Shared card / badge components (Betting, Trends, Props) ===== */
     .fm-badge {
@@ -111,16 +225,50 @@ st.markdown("""
     .fm-badge-pos-rb { color: var(--pos-rb) !important; }
     .fm-badge-pos-wr { color: var(--pos-wr) !important; }
     .fm-badge-pos-te { color: var(--pos-te) !important; }
-    .fm-nums { font-variant-numeric: tabular-nums; }
+    .fm-nums { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
     .fm-stat-card {
-        background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-        padding: 14px 16px; height: 100%;
+        background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+        padding: 16px 18px; height: 100%; transition: border-color 150ms ease, transform 150ms ease;
+        border-top: 2px solid var(--accent);
     }
+    .fm-stat-card:hover { border-color: #4a4a4e; transform: translateY(-1px); }
     .fm-stat-card .fm-stat-label {
-        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
-        color: var(--muted) !important; margin-bottom: 6px;
+        font-family: var(--font-display); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
+        color: var(--muted) !important; margin-bottom: 8px;
     }
     .fm-stat-card .fm-stat-body { color: var(--text) !important; font-size: 0.92rem; line-height: 1.5; }
+
+    /* ===== Props grid cards — fixed-shape cards laid out via st.columns,
+       wrapped with st.container(border=True). CSS only supplies consistent
+       min-height + hover lift; Streamlit's own bordered container supplies
+       the actual card chrome (border/radius) natively. ===== */
+    .st-key-fm_props_grid [data-testid="stVerticalBlockBorderWrapper"] {
+        transition: border-color 150ms ease, transform 150ms ease;
+    }
+    .st-key-fm_props_grid [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        border-color: var(--accent) !important; transform: translateY(-2px);
+    }
+    .fm-prop-card-name {
+        font-family: var(--font-display); font-weight: 600; font-size: 1.02rem;
+        color: var(--text) !important; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; margin: 6px 0 2px 0;
+    }
+    .fm-prop-card-meta { color: var(--muted) !important; font-size: 0.78rem; margin-bottom: 8px; }
+    .fm-prop-card-line {
+        font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700;
+        color: var(--text) !important; line-height: 1.1; margin-bottom: 8px;
+    }
+    .fm-headline-row {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 12px 4px; border-bottom: 1px solid var(--border);
+    }
+    .fm-headline-row:last-child { border-bottom: none; }
+    .fm-headline-row .fm-headline-bar {
+        width: 4px; align-self: stretch; border-radius: 999px;
+        background: linear-gradient(180deg, var(--gold), var(--accent)); flex-shrink: 0;
+    }
+    .fm-headline-row .fm-headline-text { color: var(--text) !important; font-size: 0.95rem; line-height: 1.5; }
+
     /* Touch/interaction spacing: keep adjacent radio + tag targets from crowding */
     div[data-baseweb="radio"] { gap: 10px !important; }
     span[data-baseweb="tag"] { margin: 2px 4px 2px 0 !important; }
@@ -171,6 +319,20 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+
+def section_title(icon, text):
+    """Branded section header: icon chip + Oswald title + the fade-bar
+    divider, used in place of st.header() so every tab opens the same way."""
+    st.markdown(
+        f"""<div class="fm-section-title">
+          <div class="fm-section-icon">{icon}</div>
+          <h2>{text}</h2>
+        </div>
+        <div class="fade-divider"></div>""",
+        unsafe_allow_html=True,
+    )
+
 
 COMPLETED_GAMES = [
     {
@@ -830,7 +992,7 @@ def render_prop_bet_ui(prop, key_prefix, use_expander=True):
             st.write(f"To win: **{profit}** Steel")
         except Exception:
             profit = 0
-        if st.button("Confirm Prop Bet", key=f"{key_prefix}_btn"):
+        if st.button("Confirm Prop Bet", key=f"{key_prefix}_btn", type="primary"):
             label = f"{prop.get('player')} {prop.get('market')} {side.upper()} {prop.get('line')}"
             ok, msg = place_steel_bet(
                 game_id=prop.get("game", "prop"),
@@ -918,7 +1080,7 @@ def render_game_bet_ui(game, key_prefix, use_expander=True):
         except Exception:
             profit = 0
 
-        if st.button("Confirm Bet", key=f"{key_prefix}_btn"):
+        if st.button("Confirm Bet", key=f"{key_prefix}_btn", type="primary"):
             line_txt = f" {line_val:+g}" if line_val is not None else ""
             label = f"{game['away']} @ {game['home']} — {bet_type} {selection}{line_txt} ({book_title})"
             ok, msg = place_steel_bet(
@@ -970,18 +1132,23 @@ if profile:
     display_name = profile.get("display_name", st.session_state.username)
     steel_balance = profile.get("steel_balance", 0)
 
-# Header
-st.title("🎯 FADE MACHINE")
-st.caption("NFL Trends • Odds • Props • Fantasy Rankings • Steel Bets")
-
-if st.session_state.authenticated:
-    st.markdown(
-        f"""<div class='steel-balance-bar'>
-        <div class='steel-label'>Steel Balance</div>
-        <div class='steel-amount'>{steel_balance}</div>
-        </div>""",
-        unsafe_allow_html=True,
-    )
+# Header — title/tagline and the Steel chip share one row on desktop and
+# stack (Streamlit's own responsive column behavior) on narrow screens.
+hero_left, hero_right = st.columns([3, 1])
+with hero_left:
+    st.title("🎯 FADE MACHINE")
+    st.caption("NFL Trends • Odds • Props • Fantasy Rankings • Steel Bets")
+with hero_right:
+    if st.session_state.authenticated:
+        st.markdown(
+            f"""<div style='display:flex;justify-content:flex-end;padding-top:10px'>
+            <div class='steel-balance-bar'>
+            <div class='steel-label'>Steel Balance</div>
+            <div class='steel-amount'>{steel_balance}</div>
+            </div></div>""",
+            unsafe_allow_html=True,
+        )
+st.markdown('<div class="fade-divider"></div>', unsafe_allow_html=True)
 
 # Live odds / props helpers (simplified for recovery)
 def fetch_live_props():
@@ -998,7 +1165,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
 
 if tab1.open:
     with tab1:
-        st.header("🎲 Betting — NFL Game Lines")
+        section_title("🎲", "Betting — NFL Game Lines")
         games, odds_err = load_nfl_betting_board()
         if odds_err == "missing_key":
             st.info("Live odds are offline: no `ODDS_API_KEY` found in `st.secrets`. Add your The Odds API key to enable moneyline, spread, and total boards.")
@@ -1079,21 +1246,26 @@ if tab1.open:
 
 if tab2.open:
     with tab2:
-        st.header("📊 Results")
+        section_title("📊", "Results")
         for g in COMPLETED_GAMES:
-            st.subheader(g["label"])
-            st.metric("Final", f"{g['away']} {g['away_score']} — {g['home']} {g['home_score']}")
-            st.caption(g.get("notes", ""))
+            with st.container(border=True):
+                st.markdown(f"<div class='fm-prop-card-meta' style='margin-bottom:2px'>{g['label']}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='fm-prop-card-line' style='font-size:1.3rem'>{g['away']} {g['away_score']} — {g['home']} {g['home_score']}</div>",
+                    unsafe_allow_html=True,
+                )
+                if g.get("notes"):
+                    st.caption(g["notes"])
 
 if tab3.open:
     with tab3:
-        st.header("🏈 Preseason")
+        section_title("🏈", "Preseason")
         st.caption("Props & fantasy tabs use sample lines until books post full boards.")
         st.write("HOF Game data is archived under Results.")
 
 if tab4.open:
     with tab4:
-        st.header("📈 Trends")
+        section_title("📈", "Trends")
         st.caption("Season-long and weekly trend snapshots")
         tc1, tc2 = st.columns(2)
         with tc1:
@@ -1118,7 +1290,7 @@ if tab4.open:
 
 if tab5.open:
     with tab5:
-        st.header("🏈 Player Prop Bets")
+        section_title("🏈", "Player Prop Bets")
         st.caption(f"Source: {'Live Odds API' if props_source == 'live' else 'Sample / illustrative lines (preseason)'} · Place Steel on Over/Under")
 
         markets = sorted(set(p["market"] for p in ALL_PROPS))
@@ -1145,22 +1317,39 @@ if tab5.open:
         if not filtered:
             st.warning("No props match filters. Live props may be limited in preseason.")
         else:
-            st.markdown("### Prop cards")
-            for i, p in enumerate(filtered):
-                pos = (p.get("pos") or "").upper()
-                summary = f"{p['player']} · {pos} · {p['market']} · {p['line']}  |  O {p.get('over','—')} / U {p.get('under','—')}"
-                with st.expander(summary, expanded=False):
-                    pos_class = f"fm-badge-pos-{pos.lower()}" if pos.lower() in ("qb", "rb", "wr", "te") else "fm-badge-pos-wr"
-                    st.markdown(
-                        f"<span class='fm-badge fm-badge-pos {pos_class}'>{pos or '—'}</span> "
-                        f"<span class='fm-badge fm-badge-week'>{p.get('team','')} · {p.get('game','')}</span> "
-                        f"<span class='fm-badge fm-badge-week fm-nums'>Line {p['line']}</span> "
-                        f"<span class='fm-badge fm-badge-over'>O {p.get('over','—')}</span> "
-                        f"<span class='fm-badge fm-badge-under'>U {p.get('under','—')}</span>"
-                        f"<div style='margin-top:10px'></div>",
-                        unsafe_allow_html=True,
-                    )
-                    render_prop_bet_ui(p, f"propbet_{i}", use_expander=False)
+            st.markdown(f"### Prop Cards <span class='fm-nums' style='font-size:0.9rem;color:var(--muted)'>({len(filtered)})</span>", unsafe_allow_html=True)
+            # True card grid: st.columns per row + st.container(border=True)
+            # per card keeps every card the same fixed shape (badge, name,
+            # line, O/U) — the variable-height bet form lives in a popover
+            # instead of an inline expander, so it never stretches the card.
+            cols_per_row = 3
+            grid = st.container(key="fm_props_grid")
+            with grid:
+                for row_start in range(0, len(filtered), cols_per_row):
+                    row_props = filtered[row_start:row_start + cols_per_row]
+                    cols = st.columns(cols_per_row)
+                    for offset, (col, p) in enumerate(zip(cols, row_props)):
+                        idx = row_start + offset
+                        pos = (p.get("pos") or "").upper()
+                        pos_class = f"fm-badge-pos-{pos.lower()}" if pos.lower() in ("qb", "rb", "wr", "te") else "fm-badge-pos-wr"
+                        with col:
+                            with st.container(border=True):
+                                st.markdown(
+                                    f"<span class='fm-badge fm-badge-pos {pos_class}'>{pos or '—'}</span> "
+                                    f"<span class='fm-badge fm-badge-week'>{p['market']}</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown(f"<div class='fm-prop-card-name'>{p['player']}</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div class='fm-prop-card-meta'>{p.get('team','')} · {p.get('game','')}</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div class='fm-prop-card-line'>{p['line']}</div>", unsafe_allow_html=True)
+                                st.markdown(
+                                    f"<span class='fm-badge fm-badge-over'>O {p.get('over','—')}</span> "
+                                    f"<span class='fm-badge fm-badge-under'>U {p.get('under','—')}</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+                                with st.popover("🎯 Bet Steel", width="stretch"):
+                                    render_prop_bet_ui(p, f"propbet_{idx}", use_expander=False)
 
 if tab6.open:
     with tab6:
@@ -1169,16 +1358,22 @@ if tab6.open:
 
 if tab7.open:
     with tab7:
-        st.header("📰 Preseason Headlines")
-        st.write("""
-        - **FINAL:** Panthers 33, Cardinals 30 (Haynes King walk-off TD) — HOF Game Aug 6
-        - Fantasy rankings powered by season-long futures lines
-        - Steel betting live on player props
-        """)
+        section_title("📰", "Preseason Headlines")
+        headlines = [
+            "<b>FINAL:</b> Panthers 33, Cardinals 30 (Haynes King walk-off TD) — HOF Game Aug 6",
+            "Fantasy rankings powered by season-long futures lines",
+            "Steel betting live on player props",
+        ]
+        rows_html = "".join(
+            f"<div class='fm-headline-row'><div class='fm-headline-bar'></div>"
+            f"<div class='fm-headline-text'>{h}</div></div>"
+            for h in headlines
+        )
+        st.markdown(f"<div>{rows_html}</div>", unsafe_allow_html=True)
 
 if tab8.open:
     with tab8:
-        st.header("🧾 My Bets")
+        section_title("🧾", "My Bets")
         if not st.session_state.authenticated:
             st.warning("Log in on the Profile tab to see open and settled bets.")
         else:
@@ -1199,13 +1394,13 @@ if tab8.open:
 
 if tab9.open:
     with tab9:
-        st.header("👤 Profile")
+        section_title("👤", "Profile")
         if not st.session_state.authenticated:
             login_tab, register_tab = st.tabs(["Login", "Create Account"])
             with login_tab:
                 u = st.text_input("Username", key="login_u")
                 p = st.text_input("Password", type="password", key="login_p")
-                if st.button("Log in"):
+                if st.button("Log in", type="primary"):
                     ok, msg = login_user(u, p)
                     if ok:
                         st.success(msg)
@@ -1216,7 +1411,7 @@ if tab9.open:
                 nu = st.text_input("New username", key="reg_u")
                 npw = st.text_input("New password", type="password", key="reg_p")
                 nd = st.text_input("Display name (optional)", key="reg_d")
-                if st.button("Create account"):
+                if st.button("Create account", type="primary"):
                     ok, msg = register_user(nu, npw, nd)
                     if ok:
                         st.success(msg)

@@ -362,26 +362,31 @@ def render_fantasy_tab(game_props=None):
     /* Fantasy tab specific overrides */
     .fm-header { text-align: center; padding: 8px 0 2px 0; }
     .fm-vegas {
-        font-size: 0.65rem; letter-spacing: 3px; color: var(--accent-light, #ff6b60);
+        font-family: var(--font-display, 'Oswald', sans-serif);
+        font-size: 0.7rem; letter-spacing: 3px; color: var(--gold, #f0b429);
         text-transform: uppercase; font-weight: 600; margin-bottom: 2px;
     }
     .fm-logo {
-        font-size: 2.1rem; font-weight: 900; letter-spacing: 1px;
+        font-family: var(--font-display, 'Oswald', sans-serif);
+        font-size: 2.3rem; font-weight: 700; letter-spacing: 1px;
         color: #ffffff; text-transform: uppercase; line-height: 1.1;
+        text-shadow: 0 0 24px var(--gold-glow, rgba(240,180,41,0.35));
     }
     .fm-logo-icon {
         display: inline-block; width: 42px; height: 42px; border-radius: 50%;
         background: linear-gradient(145deg, #2a0806, #0a0a0a);
         border: 2px solid var(--accent, #e10600); text-align: center; line-height: 40px;
         font-size: 1.3rem; margin-bottom: 4px;
+        box-shadow: 0 0 20px var(--gold-glow, rgba(240,180,41,0.25));
     }
     .fm-tagline {
-        color: var(--muted, #a6a8ad); font-size: 0.88rem; margin-top: 10px; margin-bottom: 18px;
+        color: var(--muted, #a6a8ad); font-size: 0.88rem; margin-top: 10px; margin-bottom: 4px;
         max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.4;
     }
     .rank-header-row {
         display: flex; align-items: center; padding: 6px 14px; color: var(--muted, #a6a8ad);
-        font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+        font-family: var(--font-display, 'Oswald', sans-serif);
+        font-size: 0.72rem; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
         border-bottom: 1px solid var(--border, #333336); margin-bottom: 4px;
     }
     .value-badge {
@@ -390,8 +395,11 @@ def render_fantasy_tab(game_props=None):
         letter-spacing: 0.5px;
     }
     .profile-section { padding: 4px 0 8px 0; }
-    .comp-label { font-size: 0.65rem; color: var(--muted, #a6a8ad); font-weight: 600; letter-spacing: 0.4px; }
-    .comp-val { font-size: 1.15rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+    .comp-label {
+        font-family: var(--font-display, 'Oswald', sans-serif);
+        font-size: 0.65rem; color: var(--muted, #a6a8ad); font-weight: 600; letter-spacing: 0.4px;
+    }
+    .comp-val { font-family: var(--font-mono, monospace); font-size: 1.15rem; font-weight: 700; color: #fff; }
     .team-room-row {
         display: flex; align-items: center; padding: 8px 10px; border-radius: 8px;
         background: var(--surface, #161616); margin-bottom: 4px;
@@ -436,6 +444,7 @@ def render_fantasy_tab(game_props=None):
         calculated directly from the sportsbooks
       </div>
     </div>
+    <div class="fade-divider" style="max-width:420px;margin-left:auto;margin-right:auto;"></div>
     """, unsafe_allow_html=True)
 
     # Sub-nav: RANKS | WEEKLY | TEAMS | ABOUT
