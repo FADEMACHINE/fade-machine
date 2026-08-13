@@ -939,10 +939,26 @@ def render_game_bet_ui(game, key_prefix, use_expander=True):
     else:
         _body()
 
+GUEST_USERNAME = "guest"
+
 if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+    # Login is disabled for now (too much friction re-logging in every
+    # session) — auto-sign everyone into a shared guest profile instead of
+    # showing a login wall. The Profile tab still supports logging into a
+    # separate real account if someone wants to.
+    users = load_users()
+    if GUEST_USERNAME not in users:
+        guest_user = ensure_user_fields({
+            "password_hash": bcrypt.hashpw(os.urandom(16), bcrypt.gensalt()).decode(),
+            "display_name": "Guest",
+            "created": datetime.utcnow().isoformat(),
+        })
+        users[GUEST_USERNAME] = guest_user
+        save_users(users)
+    st.session_state.authenticated = True
+    st.session_state.username = GUEST_USERNAME
 if "username" not in st.session_state:
-    st.session_state.username = None
+    st.session_state.username = GUEST_USERNAME
 
 if st.session_state.authenticated:
     settle_user_bets()
