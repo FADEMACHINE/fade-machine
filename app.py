@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 import bcrypt
 import json
 import os
@@ -873,7 +874,8 @@ def build_game_consensus(books):
 def fmt_kickoff(iso_ts):
     try:
         dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
-        return dt.strftime("%a %b %d, %I:%M %p UTC")
+        et = dt.astimezone(ZoneInfo("America/New_York"))
+        return et.strftime(f"%a %b %d, %I:%M %p {et.tzname()}")
     except Exception:
         return iso_ts or "TBD"
 
@@ -1344,23 +1346,32 @@ if tab1.open:
                         )
 
                         consensus = g.get("consensus") or {}
-                        cons_lines = []
-                        if "h2h" in consensus:
-                            c = consensus["h2h"]
-                            cons_lines.append(f"ML — {g['away']} {fmt_odds(c['away'])} · {g['home']} {fmt_odds(c['home'])}")
-                        if "spreads" in consensus:
-                            c = consensus["spreads"]
-                            cons_lines.append(f"Spread — {g['away']} {c['away_point']:+g} ({fmt_odds(c['away'])}) · {g['home']} {c['home_point']:+g} ({fmt_odds(c['home'])})")
-                        if "totals" in consensus:
-                            c = consensus["totals"]
-                            cons_lines.append(f"Total — O {c['point']} ({fmt_odds(c['over'])}) · U {c['point']} ({fmt_odds(c['under'])})")
-                        st.markdown(
-                            "<div class='fm-stat-card' style='margin-bottom:10px'>"
-                            f"<div class='fm-stat-label'>🎯 MACHINE Consensus — de-vigged average across {len(books)} book{'s' if len(books) != 1 else ''} · this is the only price Steel bets settle at</div>"
-                            "<div class='fm-stat-body fm-nums'>" + "<br>".join(cons_lines) + "</div>"
-                            "</div>",
-                            unsafe_allow_html=True,
-                        )
+                        with st.container(border=True):
+                            st.markdown(
+                                f"<div class='fm-stat-label'>🎯 MACHINE Consensus — de-vigged average across {len(books)} book{'s' if len(books) != 1 else ''} · this is the only price Steel bets settle at</div>",
+                                unsafe_allow_html=True,
+                            )
+                            if consensus:
+                                cons_row_away = {"Team": f"{g['away']} (Away)"}
+                                cons_row_home = {"Team": f"{g['home']} (Home)"}
+                                if "h2h" in consensus:
+                                    c = consensus["h2h"]
+                                    cons_row_away["Moneyline"] = fmt_odds(c["away"])
+                                    cons_row_home["Moneyline"] = fmt_odds(c["home"])
+                                if "spreads" in consensus:
+                                    c = consensus["spreads"]
+                                    cons_row_away["Spread"] = f"{c['away_point']:+g} ({fmt_odds(c['away'])})"
+                                    cons_row_home["Spread"] = f"{c['home_point']:+g} ({fmt_odds(c['home'])})"
+                                if "totals" in consensus:
+                                    c = consensus["totals"]
+                                    cons_row_away["Total"] = f"O {c['point']} ({fmt_odds(c['over'])})"
+                                    cons_row_home["Total"] = f"U {c['point']} ({fmt_odds(c['under'])})"
+                                st.dataframe(
+                                    pd.DataFrame([cons_row_away, cons_row_home]),
+                                    hide_index=True, width="stretch",
+                                )
+                            else:
+                                st.caption("No MACHINE Consensus available for this game yet.")
                         st.caption("Books below are for reference only — you can't bet a specific book's price.")
 
                         rows = []
