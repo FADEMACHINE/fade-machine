@@ -5,7 +5,9 @@ expandable player profiles with VALUE badge, comparisons, and Team Room.
 import hashlib
 import json
 import os
+import re
 import pandas as pd
+import requests
 import streamlit as st
 
 SEASON_LONG_PATH = "season_long_futures.json"
@@ -17,13 +19,74 @@ SEASON_LONG_PATH = "season_long_futures.json"
 # (more drift for lower-ranked players, matching how real experts/consensus
 # boards tend to agree near the top and diverge deeper in the ranks).
 ALT_RANK_SOURCES = ["ESPN", "FantasyPros", "Yahoo"]
-RANK_SOURCES = ["Vegas (Odds-Based)"] + ALT_RANK_SOURCES
+RANK_SOURCES = ["Vegas (Odds-Based)"] + ALT_RANK_SOURCES + ["ADP (Live Consensus)"]
 RANK_SOURCE_KEYS = {
     "Vegas (Odds-Based)": "vegas_rank",
     "ESPN": "espn_rank",
     "FantasyPros": "fantasypros_rank",
     "Yahoo": "yahoo_rank",
+    "ADP (Live Consensus)": "adp_rank",
 }
+
+# ---- Live ADP (Fantasy Football Calculator, no key required) ----
+# Unlike the ESPN/FantasyPros/Yahoo boards above (deterministic drift seeded
+# off the Vegas rank — there's no free public API for those), this is real
+# draft data pulled from actual fantasy drafts.
+ADP_API_BASE = "https://fantasyfootballcalculator.com/api/v1/adp"
+ADP_TTL_SECONDS = 6 * 60 * 60  # ADP drifts slowly; don't hammer the public API
+ADP_TEAMS = 12
+ADP_FORMAT_MAP = {"PPR": "ppr", "Half-PPR": "half-ppr", "Standard": "standard"}
+ADP_UNRANKED_SORT = 9999.0  # players missing from the live dataset sort last
+
+
+def adp_format_for_model(model_name):
+    """FFC only has standard/half-ppr/ppr formats; scoring models without a
+    direct match (TE Premium, Superflex, etc.) fall back to PPR ADP."""
+    return ADP_FORMAT_MAP.get(model_name, "ppr")
+
+
+def _normalize_player_name(name):
+    """Strip suffixes/punctuation so name variants across sources still
+    match (e.g. "Brian Robinson Jr." vs "Brian Robinson", "Kenneth Walker III"
+    vs "Kenneth Walker")."""
+    name = re.sub(r"[.'’]", "", name or "")
+    name = re.sub(r"\s+(Jr|Sr|II|III|IV)$", "", name.strip(), flags=re.IGNORECASE)
+    return name.strip().lower()
+
+
+@st.cache_data(ttl=ADP_TTL_SECONDS, persist="disk", show_spinner=False)
+def fetch_adp_raw(fmt, teams=ADP_TEAMS):
+    resp = requests.get(f"{ADP_API_BASE}/{fmt}", params={"teams": teams, "year": 2026}, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def load_adp(fmt):
+    """Real live ADP lookup + meta, keyed by normalized player name.
+    Returns ({}, None) on any failure so callers degrade gracefully instead
+    of breaking the page."""
+    try:
+        raw = fetch_adp_raw(fmt)
+    except Exception:
+        return {}, None
+    lookup = {}
+    for p in raw.get("players", []):
+        key = _normalize_player_name(p.get("name", ""))
+        if key:
+            lookup[key] = p
+    return lookup, raw.get("meta")
+
+
+def attach_adp(ranked, adp_lookup):
+    """Attach real ADP + a sequential adp_rank to each player. Players the
+    live dataset hasn't seen sort to the bottom, same as real drafts."""
+    for p in ranked:
+        entry = adp_lookup.get(_normalize_player_name(p.get("player", "")))
+        p["adp"] = entry["adp"] if entry else None
+        p["_adp_sort"] = entry["adp"] if entry else ADP_UNRANKED_SORT
+    for i, p in enumerate(sorted(ranked, key=lambda p: p["_adp_sort"]), 1):
+        p["adp_rank"] = i
+    return ranked
 
 # Position identity colors — pulled from the app's own chart categorical
 # palette (see .streamlit/config.toml) so position badges stay on-brand
@@ -495,9 +558,21 @@ def render_fantasy_tab(game_props=None):
         for i, pl in enumerate(ranked, 1):
             pl["vegas_rank"] = i
         attach_alt_source_ranks(ranked)
+        adp_lookup, adp_meta = load_adp(adp_format_for_model(model))
+        attach_adp(ranked, adp_lookup)
         ranked.sort(key=lambda x: x[RANK_SOURCE_KEYS[rank_source]])
 
-        if rank_source != "Vegas (Odds-Based)":
+        if rank_source == "ADP (Live Consensus)":
+            if adp_meta:
+                st.caption(
+                    f"Live {adp_meta.get('teams', ADP_TEAMS)}-team {adp_meta.get('type', 'PPR')} ADP "
+                    f"from {adp_meta.get('total_drafts', 0):,} drafts "
+                    f"({adp_meta.get('start_date', '')} – {adp_meta.get('end_date', '')}) · "
+                    f"Source: Fantasy Football Calculator"
+                )
+            else:
+                st.caption("⚠️ Live ADP data unavailable right now — showing fallback order.")
+        elif rank_source != "Vegas (Odds-Based)":
             st.caption(f"Sorted by {rank_source} consensus rankings · Scoring model: {model}")
 
         if not ranked:
@@ -573,7 +648,8 @@ def render_fantasy_tab(game_props=None):
                         vegas_rank_val = pl["vegas_rank"]
                         espn_rank = pl["espn_rank"]
                         fp_rank = pl["fantasypros_rank"]
-                        adp = round(vegas_rank_val + 0.3 + (vegas_rank_val % 5) * 0.15, 1)
+                        adp = pl.get("adp")
+                        adp_display = f"{adp:.1f}" if adp is not None else "—"
                         vs25 = max(-4, min(5, 8 - vegas_rank_val // 2))
                         vs_color = "#4ade80" if vs25 >= 0 else "#f87171"
                         vs_str = f"+{vs25}" if vs25 > 0 else str(vs25)
@@ -600,7 +676,7 @@ def render_fantasy_tab(game_props=None):
                         with m4:
                             st.markdown(
                                 f"<div class='comp-label'>ADP</div>"
-                                f"<div class='comp-val'>{adp}</div>",
+                                f"<div class='comp-val'>{adp_display}</div>",
                                 unsafe_allow_html=True,
                             )
                         with m5:
@@ -745,6 +821,9 @@ def render_fantasy_tab(game_props=None):
           receiving yards, rushing yards, catches, passing yards, touchdowns, targets, etc.
         - **Team Room**: Every player profile includes the full projected depth chart for that
           franchise so you can see how usage is expected to distribute.
+        - **ADP (Live Consensus)**: Real average draft position pulled live from actual fantasy
+          drafts (Fantasy Football Calculator), not a projection — this is the one source on the
+          board showing what real drafters are actually doing.
         - **VALUE badge**: Highlights players our board ranks ahead of consensus ADP / ESPN.
 
         Rankings update as the boards move. This is the closest thing to a market-implied
