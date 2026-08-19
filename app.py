@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 import bcrypt
 import json
 import os
-from supabase import create_client
 from fantasy_models import render_fantasy_tab
 import content_engine
 
@@ -229,6 +228,29 @@ st.markdown("""
     .fm-badge-pos-wr { color: var(--pos-wr) !important; }
     .fm-badge-pos-te { color: var(--pos-te) !important; }
     .fm-nums { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    /* Hand-rolled odds tables — replaces st.dataframe on the Betting board,
+       which was the single most expensive widget there (two per game, one of
+       them a pandas Styler). Same look, a fraction of the render cost. */
+    .fm-odds-wrap { overflow-x: auto; margin: 4px 0 2px 0; }
+    .fm-odds-table {
+        width: 100%; border-collapse: collapse;
+        font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+        font-size: 0.82rem;
+    }
+    .fm-odds-table th {
+        text-align: left; white-space: nowrap;
+        font-family: var(--font-display); font-size: 0.68rem; font-weight: 600;
+        letter-spacing: 0.6px; text-transform: uppercase;
+        color: var(--muted) !important;
+        padding: 6px 10px; border-bottom: 1px solid var(--border);
+    }
+    .fm-odds-table td {
+        padding: 7px 10px; white-space: nowrap;
+        border-bottom: 1px solid var(--border); color: var(--text);
+    }
+    .fm-odds-table tbody tr:last-child td { border-bottom: none; }
+    .fm-odds-table tbody tr:hover td { background: var(--surface-raised); }
+    .fm-odds-best { color: var(--positive) !important; font-weight: 800; }
     .fm-stat-card {
         background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
         padding: 16px 18px; height: 100%; transition: border-color 150ms ease, transform 150ms ease;
@@ -696,6 +718,7 @@ SAMPLE_PLAYER_PROPS = [
     {"player": 'Deebo Samuel Sr.', "team": 'WAS', "pos": 'WR', "game": 'WAS vs TBD', "market": 'Rec TDs', "line": 0.5, "over": 100, "under": -120},
 ]
 
+PROPS_PAGE_SIZES = [12, 24, 48]
 PROP_MARKET_KEYS = "player_pass_yds,player_rush_yds,player_reception_yds,player_receptions,player_pass_tds,player_rush_tds,player_reception_tds"
 MARKET_LABEL = {
     "player_pass_yds": "Pass Yds",
@@ -798,6 +821,30 @@ def load_nfl_betting_board():
         detail = str(e).replace(api_key, "***")
         return None, f"Unexpected error loading odds: {detail}"
     return parse_odds_games(raw), None
+
+def odds_table_html(columns, rows, highlight=None):
+    """Render a compact odds table as plain HTML.
+
+    st.dataframe (and especially a pandas Styler) costs far more per call than
+    markup does, and the Betting board draws two tables per game — this keeps
+    a full week of games cheap to re-render. `highlight` is a set of
+    (row_index, column_name) cells to paint as the best available price.
+    """
+    highlight = highlight or set()
+    head = "".join(f"<th>{c}</th>" for c in columns)
+    body = ""
+    for r_i, row in enumerate(rows):
+        cells = ""
+        for c in columns:
+            val = row.get(c, "—")
+            cls = " class='fm-odds-best'" if (r_i, c) in highlight else ""
+            cells += f"<td{cls}>{val}</td>"
+        body += f"<tr>{cells}</tr>"
+    return (
+        f"<div class='fm-odds-wrap'><table class='fm-odds-table'>"
+        f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
+    )
+
 
 def fmt_odds(price):
     if price is None:
@@ -926,6 +973,9 @@ def get_supabase_client():
         return None
     if not url or not key:
         return None
+    # Imported lazily: `supabase` costs ~1s to import and is only needed by
+    # the historical-data tabs, so it shouldn't be paid on every cold start.
+    from supabase import create_client
     return create_client(url, key)
 
 def _fetch_all_rows(client, table_name, page_size=1000):
@@ -1376,9 +1426,11 @@ if tab1.open:
                                     c = consensus["totals"]
                                     cons_row_away["Total"] = f"O {c['point']} ({fmt_odds(c['over'])})"
                                     cons_row_home["Total"] = f"U {c['point']} ({fmt_odds(c['under'])})"
-                                st.dataframe(
-                                    pd.DataFrame([cons_row_away, cons_row_home]),
-                                    hide_index=True, width="stretch",
+                                cons_cols = [c for c in ("Team", "Moneyline", "Spread", "Total")
+                                             if c in cons_row_away or c in cons_row_home]
+                                st.markdown(
+                                    odds_table_html(cons_cols, [cons_row_away, cons_row_home]),
+                                    unsafe_allow_html=True,
                                 )
                             else:
                                 st.caption("No MACHINE Consensus available for this game yet.")
@@ -1407,22 +1459,21 @@ if tab1.open:
                                 raw_prices["Total O"][idx] = b["totals"]["over"]["price"]
                                 raw_prices["Total U"][idx] = b["totals"]["under"]["price"]
                             rows.append(row)
-                        odds_df = pd.DataFrame(rows)
 
-                        def _highlight_best_price(df):
-                            styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                            for col, valmap in raw_prices.items():
-                                if col not in df.columns or not valmap:
-                                    continue
-                                best = max(valmap.values())
-                                for idx, v in valmap.items():
-                                    if v == best:
-                                        styles.loc[idx, col] = "color: #4ade80; font-weight: 800;"
-                            return styles
-
-                        st.dataframe(
-                            odds_df.style.apply(_highlight_best_price, axis=None),
-                            hide_index=True, width="stretch",
+                        best_cells = set()
+                        for col, valmap in raw_prices.items():
+                            if not valmap:
+                                continue
+                            best = max(valmap.values())
+                            best_cells.update((idx, col) for idx, v in valmap.items() if v == best)
+                        odds_cols = ["Sportsbook"] + [
+                            c for c in ("ML Away", "ML Home", "Spread Away",
+                                        "Spread Home", "Total O", "Total U")
+                            if any(c in r for r in rows)
+                        ]
+                        st.markdown(
+                            odds_table_html(odds_cols, rows, best_cells),
+                            unsafe_allow_html=True,
                         )
                         st.caption("Green = best price for that side across all books shown.")
                     else:
@@ -1537,7 +1588,7 @@ if tab5.open:
 
         markets = sorted(set(p["market"] for p in ALL_PROPS))
         positions = sorted(set(p.get("pos", "") for p in ALL_PROPS if p.get("pos")))
-        f1, f2, f3 = st.columns(3)
+        f1, f2, f3, f4 = st.columns([2, 2, 2, 1])
         with f1:
             mkt_filter = st.multiselect("Market", markets, default=markets, key="prop_mkt")
         with f2:
@@ -1545,6 +1596,12 @@ if tab5.open:
                                         default=positions if positions else ["QB", "RB", "WR", "TE"], key="prop_pos")
         with f3:
             search = st.text_input("Search player", "", key="prop_search")
+        with f4:
+            # Every card carries a bordered container, five markdowns and a
+            # popover holding a radio, selectbox and button. Rendering all
+            # ~340 props at once cost ~3.9s per rerun and left a DOM the
+            # browser couldn't re-apply, so the grid is paged.
+            page_size = st.selectbox("Per page", PROPS_PAGE_SIZES, index=1, key="prop_page_size")
 
         filtered = []
         for p in ALL_PROPS:
@@ -1559,7 +1616,20 @@ if tab5.open:
         if not filtered:
             st.warning("No props match filters. Live props may be limited in preseason.")
         else:
-            st.markdown(f"### Prop Cards <span class='fm-nums' style='font-size:0.9rem;color:var(--muted)'>({len(filtered)})</span>", unsafe_allow_html=True)
+            total_pages = max(1, (len(filtered) + page_size - 1) // page_size)
+            page = 1
+            if total_pages > 1:
+                page = st.selectbox(
+                    "Page", list(range(1, total_pages + 1)), index=0, key="prop_page",
+                    format_func=lambda p: f"Page {p} of {total_pages}",
+                )
+            start = (page - 1) * page_size
+            page_props = filtered[start:start + page_size]
+            st.markdown(
+                f"### Prop Cards <span class='fm-nums' style='font-size:0.9rem;color:var(--muted)'>"
+                f"({start + 1}–{start + len(page_props)} of {len(filtered)})</span>",
+                unsafe_allow_html=True,
+            )
             # True card grid: st.columns per row + st.container(border=True)
             # per card keeps every card the same fixed shape (badge, name,
             # line, O/U) — the variable-height bet form lives in a popover
@@ -1567,11 +1637,13 @@ if tab5.open:
             cols_per_row = 3
             grid = st.container(key="fm_props_grid")
             with grid:
-                for row_start in range(0, len(filtered), cols_per_row):
-                    row_props = filtered[row_start:row_start + cols_per_row]
+                for row_start in range(0, len(page_props), cols_per_row):
+                    row_props = page_props[row_start:row_start + cols_per_row]
                     cols = st.columns(cols_per_row)
                     for offset, (col, p) in enumerate(zip(cols, row_props)):
-                        idx = row_start + offset
+                        # Keyed off the position in the full filtered list so
+                        # each prop's bet-form widgets stay stable across pages.
+                        idx = start + row_start + offset
                         pos = (p.get("pos") or "").upper()
                         pos_class = f"fm-badge-pos-{pos.lower()}" if pos.lower() in ("qb", "rb", "wr", "te") else "fm-badge-pos-wr"
                         with col:
