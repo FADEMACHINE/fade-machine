@@ -384,6 +384,32 @@ def attach_alt_source_ranks(vegas_ranked):
     return vegas_ranked
 
 
+def build_ranked_players(players, model_name, pos_filter="All"):
+    """Score + rank the player pool once, attaching every source's rank.
+
+    The Vegas (odds-based) order has to be established first because the
+    ESPN/FantasyPros/Yahoo boards drift off of it. Returns (ranked, adp_meta)
+    with `vegas_rank`, `espn_rank`, `fantasypros_rank`, `yahoo_rank`,
+    `adp_rank` and raw `adp` set on every player, so callers can re-sort by
+    any source in RANK_SOURCE_KEYS without recomputing.
+    """
+    ranked = []
+    for pl in players:
+        if pos_filter == "Skill (no QB)":
+            if pl.get("pos") == "QB":
+                continue
+        elif pos_filter != "All" and pl.get("pos") != pos_filter:
+            continue
+        ranked.append({**pl, "proj_pts": calc_season_fantasy_pts(pl, model_name)})
+    ranked.sort(key=lambda x: x["proj_pts"], reverse=True)
+    for i, pl in enumerate(ranked, 1):
+        pl["vegas_rank"] = i
+    attach_alt_source_ranks(ranked)
+    adp_lookup, adp_meta = load_adp(adp_format_for_model(model_name))
+    attach_adp(ranked, adp_lookup)
+    return ranked, adp_meta
+
+
 def pos_rank_label(players_sorted, player_name, pos):
     """Return e.g. RB1, WR2 for the player's rank among same position."""
     same = [p for p in players_sorted if p.get("pos") == pos]
@@ -510,14 +536,18 @@ def render_fantasy_tab(game_props=None):
     <div class="fade-divider" style="max-width:420px;margin-left:auto;margin-right:auto;"></div>
     """, unsafe_allow_html=True)
 
-    # Sub-nav: RANKS | WEEKLY | TEAMS | ABOUT
-    ranks_tab, weekly_tab, teams_tab, about_tab = st.tabs([
-        "RANKS", "WEEKLY", "TEAMS", "ABOUT"
+    # Sub-nav: RANKS | MOCK DRAFT | WEEKLY | TEAMS | ABOUT
+    # Imported here rather than at module scope: mock_draft imports this
+    # module, so a top-level import would be circular.
+    from mock_draft import render_mock_draft_tab
+
+    ranks_tab, draft_tab, weekly_tab, teams_tab, about_tab = st.tabs([
+        "RANKS", "MOCK DRAFT", "WEEKLY", "TEAMS", "ABOUT"
     ])
 
     # ========== RANKS (primary view) ==========
     with ranks_tab:
-        c0, c1, c2, c3 = st.columns([1.4, 1.1, 1.1, 0.8])
+        c0, c1, c2, c3, c4 = st.columns([1.3, 1.0, 1.0, 0.8, 0.75])
         with c0:
             rank_source = st.selectbox(
                 "Rankings Source",
@@ -539,27 +569,22 @@ def render_fantasy_tab(game_props=None):
                 key="fm_scoring",
             )
         with c3:
+            # Each row expands into a full profile (metric strip, season lines,
+            # radio-filtered team room). Rendering all ~119 at once produced a
+            # DOM the browser couldn't re-apply on a rerun, which hung every
+            # other sub-tab — so the list is capped by default.
+            list_size = st.selectbox(
+                "Show", [25, 50, 100, "All"], index=0, key="fm_list_size",
+                help="How many players to render at once. Larger lists get slow.",
+            )
+        with c4:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("▷ DRAFT", key="fm_draft", use_container_width=True):
-                st.toast("Draft board coming soon — rankings locked to sportsbook lines.", icon="🏈")
+                st.toast("Open the MOCK DRAFT tab above to set up a draft.", icon="🏈")
 
-        # Build ranked list — always establish the Vegas (odds-based) order
-        # first since alt sources' drift is seeded off of it, then re-sort
-        # to whichever source is selected.
-        ranked = []
-        for pl in players:
-            if pos_filter == "Skill (no QB)":
-                if pl.get("pos") == "QB": continue
-            elif pos_filter != "All" and pl.get("pos") != pos_filter:
-                continue
-            pts = calc_season_fantasy_pts(pl, model)
-            ranked.append({**pl, "proj_pts": pts})
-        ranked.sort(key=lambda x: x["proj_pts"], reverse=True)
-        for i, pl in enumerate(ranked, 1):
-            pl["vegas_rank"] = i
-        attach_alt_source_ranks(ranked)
-        adp_lookup, adp_meta = load_adp(adp_format_for_model(model))
-        attach_adp(ranked, adp_lookup)
+        # Rank the pool once (every source attached), then re-sort to
+        # whichever source is currently selected.
+        ranked, adp_meta = build_ranked_players(players, model, pos_filter)
         ranked.sort(key=lambda x: x[RANK_SOURCE_KEYS[rank_source]])
 
         if rank_source == "ADP (Live Consensus)":
@@ -584,6 +609,12 @@ def render_fantasy_tab(game_props=None):
 
             rank_col_label = "RANK" if rank_source == "Vegas (Odds-Based)" else rank_source.upper()
 
+            # Ranks/pos-ranks above are computed over the full board; only the
+            # rendered slice is capped.
+            shown = ranked if list_size == "All" else ranked[:list_size]
+            if len(shown) < len(ranked):
+                st.caption(f"Showing top {len(shown)} of {len(ranked)} · change with **Show**")
+
             # Column header + player rows live in a keyed container so the
             # density CSS above only tightens this list, not the whole app.
             ranks_list = st.container(key="fm_ranks_list")
@@ -596,7 +627,7 @@ def render_fantasy_tab(game_props=None):
                 </div>
                 """, unsafe_allow_html=True)
 
-                for pl in ranked:
+                for pl in shown:
                     rank = pl["overall_rank"]
                     name = pl.get("player", "?")
                     pos_r = pl.get("pos_rank", "")
@@ -740,6 +771,10 @@ def render_fantasy_tab(game_props=None):
                                 unsafe_allow_html=True,
                             )
 
+    # ========== MOCK DRAFT ==========
+    with draft_tab:
+        render_mock_draft_tab()
+
     # ========== WEEKLY ==========
     with weekly_tab:
         st.subheader("Weekly / Game Props Rankings")
@@ -824,6 +859,8 @@ def render_fantasy_tab(game_props=None):
         - **ADP (Live Consensus)**: Real average draft position pulled live from actual fantasy
           drafts (Fantasy Football Calculator), not a projection — this is the one source on the
           board showing what real drafters are actually doing.
+        - **Mock Draft**: Full draft room — set teams, format, roster spots and your slot,
+          then draft against auto-picking opponents off whichever ranking source you choose.
         - **VALUE badge**: Highlights players our board ranks ahead of consensus ADP / ESPN.
 
         Rankings update as the boards move. This is the closest thing to a market-implied

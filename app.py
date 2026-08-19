@@ -1321,10 +1321,20 @@ if tab1.open:
         else:
             for g in games:
                 g["week"] = nfl_week_label(g["commence_time"])
-            week_options = ["All Weeks"] + sorted(
-                {g["week"] for g in games}, key=nfl_week_sort_key
+            weeks_present = sorted({g["week"] for g in games}, key=nfl_week_sort_key)
+            week_options = ["All Weeks"] + weeks_present
+            # Default to a single week, not "All Weeks". The Odds API returns
+            # the whole season (270+ games) and each game renders an expander
+            # with two dataframes, three radios, a selectbox and a button —
+            # rendering all of them never finished, which starved every tab
+            # after this one (Streamlit can't process the tab-switch rerun
+            # while the first run is still going).
+            default_week = weeks_present[0] if weeks_present else "All Weeks"
+            selected_week = st.selectbox(
+                "NFL Week", week_options,
+                index=week_options.index(default_week),
+                key="betting_week_filter",
             )
-            selected_week = st.selectbox("NFL Week", week_options, key="betting_week_filter")
             if selected_week != "All Weeks":
                 games = [g for g in games if g["week"] == selected_week]
 
