@@ -15,6 +15,7 @@ from bet_slips import (
     american_to_implied_prob, implied_prob_to_american, devig_two_way,
 )
 import bet_store
+import matchup_trends as mtr
 import user_data
 import auth_store
 import auth_ui
@@ -1790,6 +1791,12 @@ if tab_betting.open:
 
             games = [g for g in games if g["week"] == selected_week]
             st.markdown(odds_freshness_html(fetched_at, len(games)), unsafe_allow_html=True)
+            # Historical trend data is loaded once for the whole board and
+            # cached, so each card's trends panel is a pandas filter rather
+            # than its own query.
+            mtr.inject_css()
+            trend_games = mtr.games_frame()
+            trend_names = mtr.team_name_map()
             if not games:
                 st.info("No games found for that week.")
             # Per-card entrance delays. Capped at 320ms so the last card of a
@@ -1830,10 +1837,29 @@ if tab_betting.open:
                             f"the only price Steel bets settle at"
                         )
 
-                    act_l, act_r = st.columns([1, 1])
+                    act_l, act_t, act_r = st.columns([1, 1, 1])
                     with act_l:
                         with st.popover("🎯 Bet Steel", use_container_width=True):
                             render_game_bet_ui(g, f"gamebet_{i}", use_expander=False)
+                    with act_t:
+                        with st.popover("📈 Trends", use_container_width=True):
+                            trends = mtr.matchup_trends(
+                                trend_games, g["away"], g["home"], trend_names
+                            )
+                            if trends is None:
+                                st.caption(
+                                    "No historical data for this matchup — "
+                                    "check the Supabase connection."
+                                )
+                            else:
+                                st.markdown(
+                                    mtr.trends_html(trends, g["away"], g["home"]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.caption(
+                                    "From completed games 1999–2025. ATS uses the "
+                                    "closing line on record; percentages exclude pushes."
+                                )
                     with act_r:
                         # Popover, not a toggle: a toggle reruns the whole
                         # script and redraws every game on the board just to
