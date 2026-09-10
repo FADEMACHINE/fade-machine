@@ -253,6 +253,56 @@ st.markdown("""
     .fm-odds-table tbody tr:hover td { background: var(--surface-raised); }
     .fm-odds-best { color: var(--positive) !important; font-weight: 800; }
 
+    /* ===== Motion =====
+       Streamlit reruns the whole script on every interaction, which restarts
+       CSS entrance animations — a slow fade would replay each time a week is
+       tapped or a bet is placed. So entrances are kept short (under ~300ms)
+       and read as a refresh rather than a delay; only the stale-odds dot and
+       the loading shimmer loop. */
+    @keyframes fm-fade-up {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: none; }
+    }
+    @keyframes fm-grow-x {
+        from { transform: scaleX(0); }
+        to   { transform: scaleX(1); }
+    }
+    @keyframes fm-pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%      { opacity: 0.4; transform: scale(0.7); }
+    }
+    @keyframes fm-shimmer {
+        0%   { background-position: -600px 0; }
+        100% { background-position: 600px 0; }
+    }
+
+    /* Skeleton placeholders — shown while live odds are in flight so the
+       board has shape immediately instead of a blank spinner. */
+    .fm-skel-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 10px;
+    }
+    .fm-skel-row {
+        display: grid; grid-template-columns: minmax(120px, 1.6fr) repeat(3, 1fr);
+        gap: 10px;
+    }
+    .fm-skel {
+        height: 12px; border-radius: 6px;
+        background: linear-gradient(90deg, var(--surface-raised) 25%, #2f2f34 50%, var(--surface-raised) 75%);
+        background-size: 600px 100%;
+        animation: fm-shimmer 1.25s linear infinite;
+    }
+    .fm-skel-lg { height: 16px; }
+    .fm-skel-bar { height: 6px; border-radius: 999px; margin-top: 16px; }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: 0.001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.001ms !important;
+        }
+    }
+
     /* ===== Betting board: line-age strip, matchup card, win-prob bar ===== */
     .fm-freshness {
         display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -263,7 +313,12 @@ st.markdown("""
         display: inline-block;
     }
     .fm-fresh-fresh { background: var(--positive); box-shadow: 0 0 8px rgba(74,222,128,0.6); }
-    .fm-fresh-stale { background: var(--gold); box-shadow: 0 0 8px var(--gold-glow); }
+    /* Stale prices are the one thing on a betting board worth nagging about,
+       so this dot keeps pulsing until the lines are refreshed. */
+    .fm-fresh-stale {
+        background: var(--gold); box-shadow: 0 0 8px var(--gold-glow);
+        animation: fm-pulse-dot 1.8s ease-in-out infinite;
+    }
     .fm-fresh-txt { color: var(--muted) !important; }
     .fm-fresh-txt b { color: var(--text) !important; font-weight: 600; }
     .fm-fresh-sep { color: var(--muted-dim) !important; }
@@ -303,8 +358,26 @@ st.markdown("""
         display: flex; height: 6px; border-radius: 999px; overflow: hidden;
         background: var(--surface-raised);
     }
-    .fm-wp-away { background: linear-gradient(90deg, #6b6d72, var(--silver)); }
-    .fm-wp-home { background: linear-gradient(90deg, var(--accent), #ff3020); }
+    /* Each side grows out from its own edge toward the middle. scaleX rather
+       than width so it never triggers layout while animating. */
+    .fm-wp-away, .fm-wp-home {
+        animation: fm-grow-x 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .fm-wp-away {
+        background: linear-gradient(90deg, #6b6d72, var(--silver));
+        transform-origin: left center;
+    }
+    .fm-wp-home {
+        background: linear-gradient(90deg, var(--accent), #ff3020);
+        transform-origin: right center;
+    }
+    .fm-wp-pct { animation: fm-fade-up 380ms ease-out 200ms both; }
+
+    /* Game cards fade up in sequence. The delay is capped so a 16-game week
+       doesn't leave the last card waiting on a long queue. */
+    [class*="st-key-fm_game_"] {
+        animation: fm-fade-up 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
 
     @media (max-width: 640px) {
         .fm-gc { grid-template-columns: 1fr 1fr; row-gap: 12px; }
@@ -815,7 +888,9 @@ def odds_cache_bucket():
     return int(time.time() // ODDS_API_TTL_SECONDS)
 
 
-@st.cache_data(persist="disk", show_spinner="Loading live NFL odds...")
+# show_spinner=False: the Betting tab paints skeleton cards while this runs,
+# and a spinner stacked on top of them just reads as two loading states.
+@st.cache_data(persist="disk", show_spinner=False)
 def fetch_nfl_odds_raw(api_key, bucket):
     resp = requests.get(
         ODDS_API_URL,
@@ -922,6 +997,30 @@ def odds_table_html(columns, rows, highlight=None):
         f"<div class='fm-odds-wrap'><table class='fm-odds-table'>"
         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
     )
+
+
+def odds_skeleton_html(cards=6):
+    """Shimmer placeholders shaped like the real game cards.
+
+    Shown while the live odds request is in flight — Streamlit blocks on the
+    fetch, so without this the tab is blank apart from a spinner. Matching the
+    card's own grid means the board doesn't jump when real data lands.
+    """
+    col = (
+        "<div><div class='fm-skel' style='width:58%;margin-left:auto'></div>"
+        "<div class='fm-skel' style='width:42%;margin:8px 0 0 auto'></div></div>"
+    )
+    card = (
+        "<div class='fm-skel-card'><div class='fm-skel-row'>"
+        "<div>"
+        "<div class='fm-skel' style='width:56%'></div>"
+        "<div class='fm-skel fm-skel-lg' style='width:80%;margin-top:9px'></div>"
+        "<div class='fm-skel fm-skel-lg' style='width:68%;margin-top:6px'></div>"
+        "</div>"
+        f"{col}{col}{col}"
+        "</div><div class='fm-skel fm-skel-bar'></div></div>"
+    )
+    return card * cards
 
 
 def odds_freshness_html(fetched_at, game_count):
@@ -1532,7 +1631,13 @@ ALL_PROPS = live_props if live_props else SAMPLE_PLAYER_PROPS
 if tab_betting.open:
     with tab_betting:
         section_title("🎲", "Betting — NFL Game Lines")
+        # Paint skeleton cards first — this markdown reaches the browser
+        # before the blocking odds request runs, so the board has shape
+        # immediately instead of sitting blank behind a spinner.
+        odds_skeleton = st.empty()
+        odds_skeleton.markdown(odds_skeleton_html(), unsafe_allow_html=True)
         games, odds_err, fetched_at = load_nfl_betting_board()
+        odds_skeleton.empty()
         if odds_err == "missing_key":
             st.info("Live odds are offline: no `ODDS_API_KEY` found in `st.secrets`. Add your The Odds API key to enable moneyline, spread, and total boards.")
         elif odds_err:
@@ -1569,10 +1674,21 @@ if tab_betting.open:
             st.markdown(odds_freshness_html(fetched_at, len(games)), unsafe_allow_html=True)
             if not games:
                 st.info("No games found for that week.")
+            # Per-card entrance delays. Capped at 320ms so the last card of a
+            # 16-game week isn't still waiting after the rest have settled.
+            st.markdown(
+                "<style>"
+                + "".join(
+                    f".st-key-fm_game_{i} {{ animation-delay: {min(i * 40, 320)}ms; }}"
+                    for i in range(len(games))
+                )
+                + "</style>",
+                unsafe_allow_html=True,
+            )
             for i, g in enumerate(games):
                 books = g["books"]
                 consensus = g.get("consensus") or {}
-                with st.container(border=True):
+                with st.container(border=True, key=f"fm_game_{i}"):
                     # Card face: teams, kickoff and the consensus spread /
                     # total / moneyline are readable without expanding
                     # anything, so a full week scans as one board.
