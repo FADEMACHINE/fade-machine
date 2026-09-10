@@ -11,7 +11,7 @@ from fantasy_models import render_fantasy_tab
 # Odds math lives in bet_slips so the My Bets blending and the Betting board
 # can't drift apart — one implementation, imported in both places.
 from bet_slips import (
-    render_my_bets_tab, fmt_odds, american_to_profit,
+    render_my_bets_tab, fmt_odds, fmt_steel, american_to_profit,
     american_to_implied_prob, implied_prob_to_american, devig_two_way,
 )
 import bet_store
@@ -1298,11 +1298,9 @@ def load_trend_data():
 
 # Users / Steel system
 USERS_DB_PATH = "users_db.json"
-STEEL_STAKE_OPTIONS = [10, 25, 50, 100, 250, 500]
 STEEL_PRICE_USD = 0.10
-# Purchasable Steel packs. Kept separate from STEEL_STAKE_OPTIONS — that list
-# sizes individual bets, and a 1000-Steel pack shouldn't become a 1000-Steel
-# stake option on every prop card.
+# Purchasable Steel packs. Stakes are free-entry (see stake_input), so this
+# list only ever sizes purchases.
 STEEL_PACKS = [10, 25, 50, 100, 250, 500, 1000]
 
 def load_users():
@@ -1363,6 +1361,28 @@ def login_user(username, password):
         st.session_state.username = username
         return True, "Logged in"
     return False, "Wrong password"
+
+def stake_input(key_prefix, balance):
+    """Free-entry Steel stake, to the cent.
+
+    Capped at the current balance so an unaffordable stake can't be typed in
+    the first place, rather than being rejected only after Confirm.
+    """
+    max_stake = max(0.0, round(float(balance or 0), 2))
+    if max_stake < 0.01:
+        st.caption("No Steel available — buy Steel on the Profile tab to bet.")
+        return 0.0
+    return st.number_input(
+        "Stake (Steel)",
+        min_value=0.01,
+        max_value=max_stake,
+        value=min(25.0, max_stake),
+        step=1.0,
+        format="%.2f",
+        key=f"{key_prefix}_stake",
+        help=f"Type any amount to the cent, up to your {fmt_steel(max_stake)} Steel balance.",
+    )
+
 
 def current_steel_balance():
     """Balance from whichever store is active for this user."""
@@ -1513,8 +1533,8 @@ def render_prop_bet_ui(prop, key_prefix, use_expander=True):
         if not st.session_state.get("authenticated"):
             st.warning("Log in via Profile to place Steel bets on props.")
             return
-        bal = get_current_profile().get("steel_balance", 0) if get_current_profile() else 0
-        st.caption(f"Available: {bal} Steel · Line: {prop.get('line')}")
+        bal = current_steel_balance()
+        st.caption(f"Available: {fmt_steel(bal)} Steel · Line: {prop.get('line')}")
         side = st.radio(
             "Side",
             ["over", "under"],
@@ -1523,10 +1543,11 @@ def render_prop_bet_ui(prop, key_prefix, use_expander=True):
             horizontal=True,
         )
         odds_val = prop.get("over", -110) if side == "over" else prop.get("under", -110)
-        stake = st.selectbox("Stake (Steel)", STEEL_STAKE_OPTIONS, index=1, key=f"{key_prefix}_stake")
+        stake = stake_input(key_prefix, bal)
         try:
             profit = american_to_profit(stake, odds_val)
-            st.write(f"To win: **{profit}** Steel")
+            st.write(f"To win: **{fmt_steel(profit)}** Steel  ·  "
+                     f"Returns **{fmt_steel(stake + profit)}**")
         except Exception:
             profit = 0
         if st.button("Confirm Prop Bet", key=f"{key_prefix}_btn", type="primary"):
@@ -1568,8 +1589,8 @@ def render_game_bet_ui(game, key_prefix, use_expander=True):
         if not consensus:
             st.caption("No MACHINE Consensus available for this game yet.")
             return
-        bal = get_current_profile().get("steel_balance", 0) if get_current_profile() else 0
-        st.caption(f"Available: {bal} Steel · Betting the MACHINE Consensus line")
+        bal = current_steel_balance()
+        st.caption(f"Available: {fmt_steel(bal)} Steel · Betting the MACHINE Consensus line")
 
         market_labels = []
         if "h2h" in consensus:
@@ -1612,10 +1633,11 @@ def render_game_bet_ui(game, key_prefix, use_expander=True):
             line_val = c["point"]
             selection = side
 
-        stake = st.selectbox("Stake (Steel)", STEEL_STAKE_OPTIONS, index=1, key=f"{key_prefix}_stake")
+        stake = stake_input(key_prefix, bal)
         try:
             profit = american_to_profit(stake, odds_val)
-            st.write(f"To win: **{profit}** Steel")
+            st.write(f"To win: **{fmt_steel(profit)}** Steel  ·  "
+                     f"Returns **{fmt_steel(stake + profit)}**")
         except Exception:
             profit = 0
 

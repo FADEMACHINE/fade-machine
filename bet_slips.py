@@ -18,6 +18,20 @@ def fmt_odds(price):
     return f"+{price}" if price > 0 else str(price)
 
 
+def fmt_steel(value):
+    """Steel amount for display.
+
+    Stakes can be any amount to the cent, so a fixed 0-decimal format would
+    render 25.75 as "26". Whole numbers stay clean; fractional ones show both
+    decimal places.
+    """
+    try:
+        v = float(value or 0)
+    except (TypeError, ValueError):
+        return "0"
+    return f"{v:,.0f}" if abs(v - round(v)) < 0.005 else f"{v:,.2f}"
+
+
 def american_to_profit(stake, odds):
     odds = float(odds)
     if odds > 0:
@@ -269,9 +283,9 @@ def _render_slip(s, settled=False):
             right = (
                 f"<div class='bs-num'><div class='bs-lab'>To win</div>"
                 f"<div class='bs-val' style='color:var(--positive,#4ade80)'>"
-                f"{s['to_win']:.0f}</div></div>"
+                f"{fmt_steel(s['to_win'])}</div></div>"
                 f"<div class='bs-num'><div class='bs-lab'>Payout</div>"
-                f"<div class='bs-val'>{s['payout']:.0f}</div></div>"
+                f"<div class='bs-val'>{fmt_steel(s['payout'])}</div></div>"
             )
 
         st.markdown(
@@ -284,7 +298,7 @@ def _render_slip(s, settled=False):
             f"<div class='bs-num'><div class='bs-lab'>Odds</div>"
             f"<div class='bs-val'>{fmt_odds(s['odds'])}</div></div>"
             f"<div class='bs-num'><div class='bs-lab'>Stake</div>"
-            f"<div class='bs-val'>{s['stake']:.0f}</div></div>"
+            f"<div class='bs-val'>{fmt_steel(s['stake'])}</div></div>"
             f"{right}</div>",
             unsafe_allow_html=True,
         )
@@ -353,9 +367,9 @@ def render_my_bets_tab(open_bets, settled_bets):
                 f"{s['open_legs']} bet{'s' if s['open_legs'] != 1 else ''} merged"
                 if s["open_legs"] != s["open_count"] else None,
                 delta_color="off")
-    m[1].metric("Steel at risk", f"{s['at_risk']:.0f}")
-    m[2].metric("Potential return", f"{s['at_risk'] + s['potential']:.0f}",
-                f"+{s['potential']:.0f} profit" if s["potential"] else None)
+    m[1].metric("Steel at risk", fmt_steel(s['at_risk']))
+    m[2].metric("Potential return", fmt_steel(s['at_risk'] + s['potential']),
+                f"+{fmt_steel(s['potential'])} profit" if s["potential"] else None)
     if s["settled_count"]:
         m[3].metric(
             "Settled P/L", f"{s['net']:+.0f}",
