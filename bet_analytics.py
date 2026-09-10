@@ -226,14 +226,22 @@ def _history_view(df):
     return v
 
 
-def render_bet_history_section(username):
-    """Full bet bank + trends, rendered under the Profile tab."""
-    df = bet_store.history_frame(username)
+def render_bet_history_section(username, rows=None, storage_note=None):
+    """Full bet bank + trends, rendered under the Profile tab.
+
+    `rows` lets the caller supply bets from whichever backend is active
+    (Supabase when signed in, the local ledger for guests); it falls back to
+    the local ledger so the function still works standalone.
+    """
+    df = (bet_store.frame_from_rows(rows) if rows is not None
+          else bet_store.history_frame(username))
     st.markdown(
         "<div style='font-size:0.7rem;color:var(--muted,#a6a8ad);font-weight:600;"
         "letter-spacing:0.8px;margin:4px 0 2px 0'>BET BANK</div>",
         unsafe_allow_html=True,
     )
+    if storage_note:
+        st.caption(storage_note)
     if df.empty:
         st.caption("No bets recorded yet. Every Steel bet you place is banked here.")
         return

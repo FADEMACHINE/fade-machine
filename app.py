@@ -15,6 +15,9 @@ from bet_slips import (
     american_to_implied_prob, implied_prob_to_american, devig_two_way,
 )
 import bet_store
+import user_data
+import auth_store
+import auth_ui
 from bet_settlement import (
     fetch_scores, scores_by_game_id, grade_bet,
     steel_result_for, balance_credit_for,
@@ -1357,33 +1360,57 @@ def login_user(username, password):
         return True, "Logged in"
     return False, "Wrong password"
 
-def purchase_steel(amount):
-    if not st.session_state.get("authenticated"):
-        return False, "Log in first"
+def current_steel_balance():
+    """Balance from whichever store is active for this user."""
+    if auth_store.signed_in():
+        profile = auth_store.get_profile()
+        return float((profile or {}).get("steel_balance", 0) or 0)
+    profile = get_current_profile()
+    return float((profile or {}).get("steel_balance", 0) or 0)
+
+
+def adjust_steel_balance(delta, tx_type, note=""):
+    """Apply a Steel change and log it, against the active store.
+
+    Signed in -> the Supabase profile; guest -> users_db.json. Returns the new
+    balance so callers don't have to re-read it.
+    """
+    if auth_store.signed_in():
+        new_balance = round(current_steel_balance() + delta, 2)
+        auth_store.set_steel_balance(new_balance)
+        auth_store.add_transaction(tx_type, delta, note)
+        return new_balance
     users = load_users()
     uname = st.session_state.username
+    if uname not in users:
+        return current_steel_balance()
     user = ensure_user_fields(users[uname])
-    user["steel_balance"] = user.get("steel_balance", 0) + amount
+    user["steel_balance"] = round(user.get("steel_balance", 0) + delta, 2)
     user["transactions"].append({
-        "type": "purchase",
-        "steel_amount": amount,
+        "type": tx_type,
+        "steel_amount": delta,
         "timestamp": datetime.utcnow().isoformat(),
-        "note": f"Bought {amount} Steel",
+        "note": note,
     })
     users[uname] = user
     save_users(users)
-    return True, f"Added {amount} Steel! Balance: {user['steel_balance']}"
+    return user["steel_balance"]
+
+
+def purchase_steel(amount):
+    if not st.session_state.get("authenticated"):
+        return False, "Log in first"
+    balance = adjust_steel_balance(amount, "purchase", f"Bought {amount} Steel")
+    return True, f"Added {amount} Steel! Balance: {balance:.0f}"
 
 
 def place_steel_bet(game_id, away, home, market, selection, line, odds, stake, label="", market_type="fixed", player=None):
     if not st.session_state.get("authenticated"):
         return False, "Log in to place bets"
-    users = load_users()
     uname = st.session_state.username
-    user = ensure_user_fields(users[uname])
-    bal = user.get("steel_balance", 0)
+    bal = current_steel_balance()
     if stake > bal:
-        return False, f"Insufficient Steel (have {bal})"
+        return False, f"Insufficient Steel (have {bal:.0f})"
     bet = {
         "id": f"bet_{datetime.utcnow().timestamp()}",
         "game_id": game_id,
@@ -1406,18 +1433,12 @@ def place_steel_bet(game_id, away, home, market, selection, line, odds, stake, l
     # appended so an older copy of the app, or a restore from backup, still
     # sees the bet — the store's migration is keyed on bet id, so importing
     # the same bet twice is a no-op.
-    bet_store.record_bet(uname, bet)
-    user["open_bets"].append(bet)
-    user["steel_balance"] = bal - stake
-    user["transactions"].append({
-        "type": "bet",
-        "steel_amount": -stake,
-        "timestamp": datetime.utcnow().isoformat(),
-        "note": label or f"{selection} {market}",
-    })
-    users[uname] = user
-    save_users(users)
-    return True, f"Bet placed: {stake} Steel on {selection.upper()} ({market}). Balance: {user['steel_balance']}"
+    user_data.record_bet(uname, bet)
+    new_balance = adjust_steel_balance(
+        -stake, "bet", label or f"{selection} {market}"
+    )
+    return True, (f"Bet placed: {stake} Steel on {selection.upper()} "
+                  f"({market}). Balance: {new_balance:.0f}")
 
 def settle_user_bets():
     """Settle open bets whose games have finished, then credit the balance.
@@ -1430,7 +1451,7 @@ def settle_user_bets():
     if not st.session_state.get("authenticated"):
         return
     uname = st.session_state.get("username")
-    pending = bet_store.open_bets_with_games(uname)
+    pending = user_data.open_bets_with_games(uname)
     if not pending:
         return
     api_key = get_odds_api_key()
@@ -1443,12 +1464,7 @@ def settle_user_bets():
     if not finals:
         return
 
-    users = load_users()
-    if uname not in users:
-        return
-    user = ensure_user_fields(users[uname])
-    settled_ids, credited = [], 0.0
-
+    settled_ids = []
     for bet in pending:
         game = finals.get(bet.get("game_id"))
         if not game or not game.get("completed"):
@@ -1459,30 +1475,33 @@ def settle_user_bets():
         profit = american_to_profit(bet.get("stake", 0), bet.get("odds") or -110)
         result = steel_result_for(status, bet.get("stake", 0), profit)
         credit = balance_credit_for(status, bet.get("stake", 0), profit)
-        bet_store.mark_settled(
+        user_data.mark_settled(
             bet["id"], status, result, datetime.utcnow().isoformat(),
             game.get("away_score"), game.get("home_score"), note,
         )
         settled_ids.append(bet["id"])
-        credited += credit
         if credit:
-            user["transactions"].append({
-                "type": f"settle_{status}",
-                "steel_amount": credit,
-                "timestamp": datetime.utcnow().isoformat(),
-                "note": f"{bet.get('label') or bet.get('market')} — {note}",
-            })
+            # Credited one bet at a time so a failure part-way through can't
+            # leave the balance crediting bets that were never marked settled.
+            adjust_steel_balance(
+                credit, f"settle_{status}",
+                f"{bet.get('label') or bet.get('market')} — {note}",
+            )
 
     if not settled_ids:
         return
 
-    # Mirror the settlement into the JSON account so balance and the legacy
-    # bet lists don't drift from the ledger.
-    done = set(settled_ids)
-    user["open_bets"] = [b for b in user.get("open_bets", []) if b.get("id") not in done]
-    user["steel_balance"] = round(user.get("steel_balance", 0) + credited, 2)
-    users[uname] = user
-    save_users(users)
+    # Keep the legacy JSON open-bets list from drifting for guest accounts.
+    if not auth_store.signed_in():
+        users = load_users()
+        if uname in users:
+            user = ensure_user_fields(users[uname])
+            done = set(settled_ids)
+            user["open_bets"] = [
+                b for b in user.get("open_bets", []) if b.get("id") not in done
+            ]
+            users[uname] = user
+            save_users(users)
 
 def render_prop_bet_ui(prop, key_prefix, use_expander=True):
     """Place Steel on a single player prop Over/Under."""
@@ -1638,6 +1657,10 @@ if "authenticated" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = GUEST_USERNAME
 
+# Re-establish a signed-in session from the browser cookie before anything
+# reads bets or balance, so a refresh doesn't silently drop back to guest.
+auth_ui.restore_session()
+
 if "bets_migrated" not in st.session_state:
     # Idempotent: only inserts bet ids the ledger hasn't seen, so this is a
     # no-op after the first run.
@@ -1647,12 +1670,21 @@ if "bets_migrated" not in st.session_state:
 if st.session_state.authenticated:
     settle_user_bets()
 
-profile = get_current_profile()
-display_name = None
-steel_balance = 0
-if profile:
-    display_name = profile.get("display_name", st.session_state.username)
-    steel_balance = profile.get("steel_balance", 0)
+# Header identity comes from the active store: the Supabase profile when
+# signed in, the local guest profile otherwise.
+if auth_store.signed_in():
+    sb_profile = auth_store.get_profile() or {}
+    display_name = sb_profile.get("display_name") or (
+        (auth_store.current_session() or {}).get("email") or "Player"
+    )
+    steel_balance = sb_profile.get("steel_balance", 0)
+else:
+    profile = get_current_profile()
+    display_name = None
+    steel_balance = 0
+    if profile:
+        display_name = profile.get("display_name", st.session_state.username)
+        steel_balance = profile.get("steel_balance", 0)
 
 # Header — title/tagline and the Steel chip share one row on desktop and
 # stack (Streamlit's own responsive column behavior) on narrow screens.
@@ -2036,8 +2068,8 @@ if tab_mybets.open:
             st.warning("Log in on the Profile tab to see open and settled bets.")
         else:
             render_my_bets_tab(
-                bet_store.bets_for(st.session_state.username, "open"),
-                bet_store.bets_for(st.session_state.username, "settled"),
+                user_data.bets_for(st.session_state.username, "open"),
+                user_data.bets_for(st.session_state.username, "settled"),
             )
 
 if tab_profile.open:
@@ -2073,13 +2105,21 @@ if tab_profile.open:
                 ["Account", "Bet Bank", "Buy Steel", "Transaction History"]
             )
             with sub_bank:
-                render_bet_history_section(st.session_state.username)
+                render_bet_history_section(
+                    st.session_state.username,
+                    rows=user_data.history_rows(st.session_state.username),
+                    storage_note=(
+                        "Stored durably in your account — survives redeploys."
+                        if user_data.is_durable() else
+                        "⚠️ Guest storage: kept on this machine only and wiped "
+                        "when the app redeploys. Sign in on the Account tab to "
+                        "keep this history permanently."
+                    ),
+                )
             with sub_account:
-                st.write(f"Username: `{st.session_state.username}`")
-                if st.button("Log out"):
-                    st.session_state.authenticated = False
-                    st.session_state.username = None
-                    st.rerun()
+                auth_ui.render_account_panel(
+                    local_bets_getter=lambda: bet_store.bets_for(GUEST_USERNAME)
+                )
             with sub_buy:
                 pack_amount = st.selectbox("Steel pack",
                                            STEEL_STAKE_OPTIONS,

@@ -142,13 +142,26 @@ def open_bets_with_games(username=None):
 
 
 def history_frame(username):
-    """Every bet for a user as a DataFrame, typed for analysis."""
-    rows = bets_for(username)
+    """Every locally-stored bet for a user as a DataFrame."""
+    return frame_from_rows(bets_for(username))
+
+
+def frame_from_rows(rows):
+    """Type a list of bet rows for analysis.
+
+    Takes rows rather than reading storage itself so the same shaping works
+    for the local ledger and for Supabase, which return the same columns.
+    """
     df = pd.DataFrame(rows, columns=COLUMNS) if rows else pd.DataFrame(columns=COLUMNS)
     if df.empty:
         return df
-    df["placed_at"] = pd.to_datetime(df["placed_at"], errors="coerce", format="mixed")
-    df["settled_at"] = pd.to_datetime(df["settled_at"], errors="coerce", format="mixed")
+    # utc=True: the local ledger writes naive ISO strings while Supabase
+    # returns timezone-aware ones. Normalising both to UTC keeps a frame
+    # sortable no matter which backend produced it.
+    df["placed_at"] = pd.to_datetime(df["placed_at"], errors="coerce",
+                                     format="mixed", utc=True)
+    df["settled_at"] = pd.to_datetime(df["settled_at"], errors="coerce",
+                                      format="mixed", utc=True)
     for c in ("stake", "steel_result", "line"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df["odds"] = pd.to_numeric(df["odds"], errors="coerce")
