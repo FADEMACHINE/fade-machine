@@ -8,6 +8,12 @@ import json
 import os
 import time
 from fantasy_models import render_fantasy_tab
+# Odds math lives in bet_slips so the My Bets blending and the Betting board
+# can't drift apart — one implementation, imported in both places.
+from bet_slips import (
+    render_my_bets_tab, fmt_odds, american_to_profit,
+    american_to_implied_prob, implied_prob_to_american, devig_two_way,
+)
 import content_engine
 
 st.set_page_config(
@@ -1113,25 +1119,6 @@ def game_card_header_html(g, consensus):
     )
 
 
-def fmt_odds(price):
-    if price is None:
-        return "—"
-    return f"+{price}" if price > 0 else str(price)
-
-def american_to_implied_prob(price):
-    price = float(price)
-    return 100.0 / (price + 100.0) if price > 0 else -price / (-price + 100.0)
-
-def implied_prob_to_american(prob):
-    prob = min(max(prob, 0.0001), 0.9999)
-    return round(-100.0 * prob / (1.0 - prob)) if prob >= 0.5 else round(100.0 * (1.0 - prob) / prob)
-
-def devig_two_way(price_a, price_b):
-    """Strip the vig out of a book's two-sided price, returning fair
-    probabilities that sum to exactly 1."""
-    pa, pb = american_to_implied_prob(price_a), american_to_implied_prob(price_b)
-    total = pa + pb
-    return (0.5, 0.5) if total <= 0 else (pa / total, pb / total)
 
 def build_game_consensus(books):
     """MACHINE Consensus: de-vig every listed book's price for a side, average
@@ -1381,12 +1368,6 @@ def purchase_steel(amount):
     save_users(users)
     return True, f"Added {amount} Steel! Balance: {user['steel_balance']}"
 
-def american_to_profit(stake, odds):
-    odds = float(odds)
-    if odds > 0:
-        return round(stake * (odds / 100), 2)
-    else:
-        return round(stake * (100 / abs(odds)), 2)
 
 def place_steel_bet(game_id, away, home, market, selection, line, odds, stake, label="", market_type="fixed", player=None):
     if not st.session_state.get("authenticated"):
@@ -1975,20 +1956,7 @@ if tab_mybets.open:
         if not st.session_state.authenticated:
             st.warning("Log in on the Profile tab to see open and settled bets.")
         else:
-            current = get_current_profile()
-            open_sub, settled_sub = st.tabs(["Open Bets", "Settled History"])
-            with open_sub:
-                opens = current.get("open_bets", []) if current else []
-                if not opens:
-                    st.caption("No open bets.")
-                else:
-                    st.dataframe(pd.DataFrame(opens), use_container_width=True, hide_index=True)
-            with settled_sub:
-                settled = current.get("settled_bets", []) if current else []
-                if not settled:
-                    st.caption("No settled bets yet.")
-                else:
-                    st.dataframe(pd.DataFrame(settled), use_container_width=True, hide_index=True)
+            render_my_bets_tab(get_current_profile())
 
 if tab_profile.open:
     with tab_profile:
