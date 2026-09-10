@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import bcrypt
 import json
 import os
+import time
 from fantasy_models import render_fantasy_tab
 import content_engine
 
@@ -251,6 +252,65 @@ st.markdown("""
     .fm-odds-table tbody tr:last-child td { border-bottom: none; }
     .fm-odds-table tbody tr:hover td { background: var(--surface-raised); }
     .fm-odds-best { color: var(--positive) !important; font-weight: 800; }
+
+    /* ===== Betting board: line-age strip, matchup card, win-prob bar ===== */
+    .fm-freshness {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        margin: 2px 0 10px 0; font-size: 0.8rem;
+    }
+    .fm-fresh-dot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        display: inline-block;
+    }
+    .fm-fresh-fresh { background: var(--positive); box-shadow: 0 0 8px rgba(74,222,128,0.6); }
+    .fm-fresh-stale { background: var(--gold); box-shadow: 0 0 8px var(--gold-glow); }
+    .fm-fresh-txt { color: var(--muted) !important; }
+    .fm-fresh-txt b { color: var(--text) !important; font-weight: 600; }
+    .fm-fresh-sep { color: var(--muted-dim) !important; }
+
+    .fm-gc {
+        display: grid; grid-template-columns: minmax(120px, 1.6fr) repeat(3, 1fr);
+        gap: 10px; align-items: start;
+    }
+    .fm-gc-teams { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .fm-gc-kick {
+        font-family: var(--font-display); font-size: 0.62rem; font-weight: 600;
+        letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted) !important;
+        margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .fm-gc-team {
+        font-size: 0.95rem; font-weight: 600; color: var(--text); line-height: 1.35;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .fm-gc-col { display: flex; flex-direction: column; gap: 2px; text-align: right; }
+    .fm-gc-lab {
+        font-family: var(--font-display); font-size: 0.58rem; font-weight: 600;
+        letter-spacing: 0.7px; color: var(--muted) !important; margin-bottom: 3px;
+    }
+    .fm-gc-val {
+        font-size: 0.95rem; font-weight: 700; color: var(--text); line-height: 1.35;
+    }
+
+    .fm-wp { margin: 12px 0 2px 0; }
+    .fm-wp-row {
+        display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+        font-size: 0.74rem;
+    }
+    .fm-wp-team { color: var(--muted) !important; }
+    .fm-wp-pct { font-weight: 700; color: var(--text); }
+    .fm-wp-spacer { flex: 1; }
+    .fm-wp-bar {
+        display: flex; height: 6px; border-radius: 999px; overflow: hidden;
+        background: var(--surface-raised);
+    }
+    .fm-wp-away { background: linear-gradient(90deg, #6b6d72, var(--silver)); }
+    .fm-wp-home { background: linear-gradient(90deg, var(--accent), #ff3020); }
+
+    @media (max-width: 640px) {
+        .fm-gc { grid-template-columns: 1fr 1fr; row-gap: 12px; }
+        .fm-gc-teams { grid-column: 1 / -1; }
+        .fm-gc-col { text-align: left; }
+    }
     .fm-stat-card {
         background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
         padding: 16px 18px; height: 100%; transition: border-color 150ms ease, transform 150ms ease;
@@ -742,8 +802,21 @@ def get_odds_api_key():
     except Exception:
         return None
 
-@st.cache_data(ttl=ODDS_API_TTL_SECONDS, persist="disk", show_spinner="Loading live NFL odds...")
-def fetch_nfl_odds_raw(api_key):
+def odds_cache_bucket():
+    """Current TTL window, used as a cache-key argument.
+
+    Streamlit silently ignores `ttl` on a `persist="disk"` cache (it logs
+    "TTL that will be ignored" at startup), so the odds cache never expired —
+    the board was still serving the payload fetched the first time the app
+    ran. Passing the time bucket in as an argument gives the persistent cache
+    a key that rolls over every TTL, which expires it for real while still
+    surviving restarts so we don't burn API credits on every reload.
+    """
+    return int(time.time() // ODDS_API_TTL_SECONDS)
+
+
+@st.cache_data(persist="disk", show_spinner="Loading live NFL odds...")
+def fetch_nfl_odds_raw(api_key, bucket):
     resp = requests.get(
         ODDS_API_URL,
         params={
@@ -755,7 +828,7 @@ def fetch_nfl_odds_raw(api_key):
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.json()
+    return {"fetched_at": time.time(), "games": resp.json()}
 
 def parse_odds_games(raw_games):
     games = []
@@ -808,19 +881,24 @@ def parse_odds_games(raw_games):
     return games
 
 def load_nfl_betting_board():
-    """Returns (games, error). error is None on success, else a short reason code/message."""
+    """Returns (games, error, fetched_at).
+
+    error is None on success, else a short reason code/message. fetched_at is
+    the unix time the live payload was actually pulled from The Odds API (not
+    when it was read back out of cache), so the board can show line age.
+    """
     api_key = get_odds_api_key()
     if not api_key:
-        return None, "missing_key"
+        return None, "missing_key", None
     try:
-        raw = fetch_nfl_odds_raw(api_key)
+        raw = fetch_nfl_odds_raw(api_key, odds_cache_bucket())
     except requests.exceptions.RequestException as e:
         detail = str(e).replace(api_key, "***")
-        return None, f"The Odds API request failed: {detail}"
+        return None, f"The Odds API request failed: {detail}", None
     except Exception as e:
         detail = str(e).replace(api_key, "***")
-        return None, f"Unexpected error loading odds: {detail}"
-    return parse_odds_games(raw), None
+        return None, f"Unexpected error loading odds: {detail}", None
+    return parse_odds_games(raw.get("games")), None, raw.get("fetched_at")
 
 def odds_table_html(columns, rows, highlight=None):
     """Render a compact odds table as plain HTML.
@@ -843,6 +921,96 @@ def odds_table_html(columns, rows, highlight=None):
     return (
         f"<div class='fm-odds-wrap'><table class='fm-odds-table'>"
         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
+    )
+
+
+def odds_freshness_html(fetched_at, game_count):
+    """Line-age strip. Stale odds are worse than no odds on a betting board,
+    so the age is stated outright rather than buried in a caption."""
+    if not fetched_at:
+        age_txt, tone = "unknown", "stale"
+    else:
+        mins = max(0, int((time.time() - fetched_at) / 60))
+        if mins < 60:
+            age_txt = f"{mins} min ago"
+        elif mins < 60 * 48:
+            age_txt = f"{mins // 60}h ago"
+        else:
+            age_txt = f"{mins // 1440}d ago"
+        tone = "fresh" if mins <= ODDS_API_TTL_SECONDS / 60 else "stale"
+    return (
+        f"<div class='fm-freshness'>"
+        f"<span class='fm-fresh-dot fm-fresh-{tone}'></span>"
+        f"<span class='fm-fresh-txt'>Lines updated <b>{age_txt}</b></span>"
+        f"<span class='fm-fresh-sep'>·</span>"
+        f"<span class='fm-fresh-txt'>{game_count} game{'s' if game_count != 1 else ''}</span>"
+        f"<span class='fm-fresh-sep'>·</span>"
+        f"<span class='fm-fresh-txt'>Source: The Odds API</span>"
+        f"</div>"
+    )
+
+
+def win_prob_bar_html(away, home, away_price, home_price):
+    """De-vigged moneyline as a two-sided win-probability bar — the fastest
+    read on a board of games, and it's already computed for the consensus."""
+    if away_price is None or home_price is None:
+        return ""
+    pa, ph = devig_two_way(away_price, home_price)
+    return (
+        f"<div class='fm-wp'>"
+        f"<div class='fm-wp-row'>"
+        f"<span class='fm-wp-team'>{away}</span>"
+        f"<span class='fm-wp-pct fm-nums'>{pa * 100:.0f}%</span>"
+        f"<span class='fm-wp-spacer'></span>"
+        f"<span class='fm-wp-pct fm-nums'>{ph * 100:.0f}%</span>"
+        f"<span class='fm-wp-team'>{home}</span>"
+        f"</div>"
+        f"<div class='fm-wp-bar'>"
+        f"<div class='fm-wp-away' style='width:{pa * 100:.1f}%'></div>"
+        f"<div class='fm-wp-home' style='width:{ph * 100:.1f}%'></div>"
+        f"</div></div>"
+    )
+
+
+def game_card_header_html(g, consensus):
+    """At-a-glance matchup card: teams, kickoff, and the consensus spread /
+    total / moneyline without needing to expand anything."""
+    def cell(label, away_val, home_val):
+        return (
+            f"<div class='fm-gc-col'>"
+            f"<div class='fm-gc-lab'>{label}</div>"
+            f"<div class='fm-gc-val fm-nums'>{away_val}</div>"
+            f"<div class='fm-gc-val fm-nums'>{home_val}</div>"
+            f"</div>"
+        )
+
+    sp = consensus.get("spreads")
+    tot = consensus.get("totals")
+    ml = consensus.get("h2h")
+    spread_cell = cell(
+        "SPREAD",
+        f"{sp['away_point']:+g}" if sp else "—",
+        f"{sp['home_point']:+g}" if sp else "—",
+    )
+    total_cell = cell(
+        "TOTAL",
+        f"O {tot['point']:g}" if tot else "—",
+        f"U {tot['point']:g}" if tot else "—",
+    )
+    ml_cell = cell(
+        "MONEYLINE",
+        fmt_odds(ml["away"]) if ml else "—",
+        fmt_odds(ml["home"]) if ml else "—",
+    )
+    return (
+        f"<div class='fm-gc'>"
+        f"<div class='fm-gc-teams'>"
+        f"<div class='fm-gc-kick'>{fmt_kickoff(g['commence_time'])}</div>"
+        f"<div class='fm-gc-team'>{g['away']}</div>"
+        f"<div class='fm-gc-team'>{g['home']}</div>"
+        f"</div>"
+        f"{spread_cell}{total_cell}{ml_cell}"
+        f"</div>"
     )
 
 
@@ -1353,15 +1521,18 @@ live_props = fetch_live_props()
 props_source = "live" if live_props else "sample"
 ALL_PROPS = live_props if live_props else SAMPLE_PLAYER_PROPS
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-    "🎲 Betting", "📊 Results", "🏈 Preseason", "📈 Trends",
-    "🏈 Props", "🏆 Fantasy", "📰 Headlines", "🧾 My Bets", "👤 Profile"
+# Named rather than tab1..tabN so adding or removing a tab can't silently
+# shift every block below it onto the wrong panel.
+(tab_betting, tab_results, tab_trends, tab_props, tab_fantasy,
+ tab_headlines, tab_mybets, tab_profile) = st.tabs([
+    "🎲 Betting", "📊 Results", "📈 Trends", "🏈 Props",
+    "🏆 Fantasy", "📰 Headlines", "🧾 My Bets", "👤 Profile"
 ], on_change="rerun")
 
-if tab1.open:
-    with tab1:
+if tab_betting.open:
+    with tab_betting:
         section_title("🎲", "Betting — NFL Game Lines")
-        games, odds_err = load_nfl_betting_board()
+        games, odds_err, fetched_at = load_nfl_betting_board()
         if odds_err == "missing_key":
             st.info("Live odds are offline: no `ODDS_API_KEY` found in `st.secrets`. Add your The Odds API key to enable moneyline, spread, and total boards.")
         elif odds_err:
@@ -1372,116 +1543,116 @@ if tab1.open:
             for g in games:
                 g["week"] = nfl_week_label(g["commence_time"])
             weeks_present = sorted({g["week"] for g in games}, key=nfl_week_sort_key)
-            week_options = ["All Weeks"] + weeks_present
-            # Default to a single week, not "All Weeks". The Odds API returns
-            # the whole season (270+ games) and each game renders an expander
-            # with two dataframes, three radios, a selectbox and a button —
-            # rendering all of them never finished, which starved every tab
-            # after this one (Streamlit can't process the tab-switch rerun
-            # while the first run is still going).
-            default_week = weeks_present[0] if weeks_present else "All Weeks"
-            selected_week = st.selectbox(
-                "NFL Week", week_options,
-                index=week_options.index(default_week),
-                key="betting_week_filter",
-            )
-            if selected_week != "All Weeks":
-                games = [g for g in games if g["week"] == selected_week]
+            # Default to the soonest week still on the board — The Odds API
+            # only returns upcoming games, so that's the current week.
+            default_week = weeks_present[0] if weeks_present else None
 
-            st.caption(f"{len(games)} game(s) · lines refresh roughly every 3 hours · Source: The Odds API")
+            head_l, head_r = st.columns([3, 1])
+            with head_l:
+                # Segmented control instead of a dropdown: every week is one
+                # tap, and the active week is visible without opening a menu.
+                # "All Weeks" is deliberately absent — the full season is 270+
+                # games and rendering them at once is what used to hang the app.
+                selected_week = st.segmented_control(
+                    "NFL Week", weeks_present,
+                    default=default_week, key="betting_week_filter",
+                ) or default_week
+            with head_r:
+                st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+                if st.button("↻ Refresh odds", key="betting_refresh",
+                             use_container_width=True,
+                             help="Pull fresh lines from The Odds API now."):
+                    fetch_nfl_odds_raw.clear()
+                    st.rerun()
+
+            games = [g for g in games if g["week"] == selected_week]
+            st.markdown(odds_freshness_html(fetched_at, len(games)), unsafe_allow_html=True)
             if not games:
                 st.info("No games found for that week.")
             for i, g in enumerate(games):
                 books = g["books"]
-                week_prefix = f"{g['week']} · " if selected_week == "All Weeks" else ""
-                header = f"{week_prefix}{g['away']} @ {g['home']}  ·  {fmt_kickoff(g['commence_time'])}"
-                with st.expander(header, expanded=(i == 0)):
-                    if books:
+                consensus = g.get("consensus") or {}
+                with st.container(border=True):
+                    # Card face: teams, kickoff and the consensus spread /
+                    # total / moneyline are readable without expanding
+                    # anything, so a full week scans as one board.
+                    st.markdown(game_card_header_html(g, consensus),
+                                unsafe_allow_html=True)
+                    ml = consensus.get("h2h")
+                    if ml:
                         st.markdown(
-                            f"<span class='fm-badge fm-badge-week'>{g['week']}</span> "
-                            f"<span class='fm-badge fm-badge-week fm-nums'>{fmt_kickoff(g['commence_time'])}</span> "
-                            f"<span class='fm-badge fm-badge-week'>{len(books)} book{'s' if len(books) != 1 else ''}</span>"
-                            f"<div style='margin-top:8px'></div>",
+                            win_prob_bar_html(g["away"], g["home"],
+                                              ml["away"], ml["home"]),
                             unsafe_allow_html=True,
                         )
+                    if not books:
+                        st.caption("No sportsbook lines available for this game yet.")
+                    elif not consensus:
+                        st.caption("No MACHINE Consensus available for this game yet.")
+                    else:
+                        st.caption(
+                            f"🎯 MACHINE Consensus · de-vigged average across "
+                            f"{len(books)} book{'s' if len(books) != 1 else ''} · "
+                            f"the only price Steel bets settle at"
+                        )
 
-                        consensus = g.get("consensus") or {}
-                        with st.container(border=True):
+                    act_l, act_r = st.columns([1, 1])
+                    with act_l:
+                        with st.popover("🎯 Bet Steel", use_container_width=True):
+                            render_game_bet_ui(g, f"gamebet_{i}", use_expander=False)
+                    with act_r:
+                        # Popover, not a toggle: a toggle reruns the whole
+                        # script and redraws every game on the board just to
+                        # reveal one table. The popover opens client-side.
+                        with st.popover(f"📊 Compare {len(books)} books",
+                                        use_container_width=True,
+                                        disabled=not books):
+                            st.caption(
+                                "Reference only — you can't bet a specific book's "
+                                "price. Green = best price for that side."
+                            )
+                            rows = []
+                            # Track raw numeric prices per column so the best price
+                            # for the bettor can be highlighted — a standard
+                            # odds-comparison pattern on real sportsbook boards.
+                            raw_prices = {"ML Away": {}, "ML Home": {}, "Spread Away": {}, "Spread Home": {}, "Total O": {}, "Total U": {}}
+                            for idx, b in enumerate(books):
+                                row = {"Sportsbook": b["title"]}
+                                if "h2h" in b:
+                                    row["ML Away"] = fmt_odds(b["h2h"]["away"])
+                                    row["ML Home"] = fmt_odds(b["h2h"]["home"])
+                                    raw_prices["ML Away"][idx] = b["h2h"]["away"]
+                                    raw_prices["ML Home"][idx] = b["h2h"]["home"]
+                                if "spreads" in b:
+                                    row["Spread Away"] = f"{b['spreads']['away']['point']:+g} ({fmt_odds(b['spreads']['away']['price'])})"
+                                    row["Spread Home"] = f"{b['spreads']['home']['point']:+g} ({fmt_odds(b['spreads']['home']['price'])})"
+                                    raw_prices["Spread Away"][idx] = b["spreads"]["away"]["price"]
+                                    raw_prices["Spread Home"][idx] = b["spreads"]["home"]["price"]
+                                if "totals" in b:
+                                    row["Total O"] = f"O {b['totals']['over']['point']} ({fmt_odds(b['totals']['over']['price'])})"
+                                    row["Total U"] = f"U {b['totals']['under']['point']} ({fmt_odds(b['totals']['under']['price'])})"
+                                    raw_prices["Total O"][idx] = b["totals"]["over"]["price"]
+                                    raw_prices["Total U"][idx] = b["totals"]["under"]["price"]
+                                rows.append(row)
+
+                            best_cells = set()
+                            for col, valmap in raw_prices.items():
+                                if not valmap:
+                                    continue
+                                best = max(valmap.values())
+                                best_cells.update((idx, col) for idx, v in valmap.items() if v == best)
+                            odds_cols = ["Sportsbook"] + [
+                                c for c in ("ML Away", "ML Home", "Spread Away",
+                                            "Spread Home", "Total O", "Total U")
+                                if any(c in r for r in rows)
+                            ]
                             st.markdown(
-                                f"<div class='fm-stat-label'>🎯 MACHINE Consensus — de-vigged average across {len(books)} book{'s' if len(books) != 1 else ''} · this is the only price Steel bets settle at</div>",
+                                odds_table_html(odds_cols, rows, best_cells),
                                 unsafe_allow_html=True,
                             )
-                            if consensus:
-                                cons_row_away = {"Team": f"{g['away']} (Away)"}
-                                cons_row_home = {"Team": f"{g['home']} (Home)"}
-                                if "h2h" in consensus:
-                                    c = consensus["h2h"]
-                                    cons_row_away["Moneyline"] = fmt_odds(c["away"])
-                                    cons_row_home["Moneyline"] = fmt_odds(c["home"])
-                                if "spreads" in consensus:
-                                    c = consensus["spreads"]
-                                    cons_row_away["Spread"] = f"{c['away_point']:+g} ({fmt_odds(c['away'])})"
-                                    cons_row_home["Spread"] = f"{c['home_point']:+g} ({fmt_odds(c['home'])})"
-                                if "totals" in consensus:
-                                    c = consensus["totals"]
-                                    cons_row_away["Total"] = f"O {c['point']} ({fmt_odds(c['over'])})"
-                                    cons_row_home["Total"] = f"U {c['point']} ({fmt_odds(c['under'])})"
-                                cons_cols = [c for c in ("Team", "Moneyline", "Spread", "Total")
-                                             if c in cons_row_away or c in cons_row_home]
-                                st.markdown(
-                                    odds_table_html(cons_cols, [cons_row_away, cons_row_home]),
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                st.caption("No MACHINE Consensus available for this game yet.")
-                        st.caption("Books below are for reference only — you can't bet a specific book's price.")
 
-                        rows = []
-                        # Track raw numeric prices per column so the best price
-                        # for the bettor can be highlighted — a standard
-                        # odds-comparison pattern on real sportsbook boards.
-                        raw_prices = {"ML Away": {}, "ML Home": {}, "Spread Away": {}, "Spread Home": {}, "Total O": {}, "Total U": {}}
-                        for idx, b in enumerate(books):
-                            row = {"Sportsbook": b["title"]}
-                            if "h2h" in b:
-                                row["ML Away"] = fmt_odds(b["h2h"]["away"])
-                                row["ML Home"] = fmt_odds(b["h2h"]["home"])
-                                raw_prices["ML Away"][idx] = b["h2h"]["away"]
-                                raw_prices["ML Home"][idx] = b["h2h"]["home"]
-                            if "spreads" in b:
-                                row["Spread Away"] = f"{b['spreads']['away']['point']:+g} ({fmt_odds(b['spreads']['away']['price'])})"
-                                row["Spread Home"] = f"{b['spreads']['home']['point']:+g} ({fmt_odds(b['spreads']['home']['price'])})"
-                                raw_prices["Spread Away"][idx] = b["spreads"]["away"]["price"]
-                                raw_prices["Spread Home"][idx] = b["spreads"]["home"]["price"]
-                            if "totals" in b:
-                                row["Total O"] = f"O {b['totals']['over']['point']} ({fmt_odds(b['totals']['over']['price'])})"
-                                row["Total U"] = f"U {b['totals']['under']['point']} ({fmt_odds(b['totals']['under']['price'])})"
-                                raw_prices["Total O"][idx] = b["totals"]["over"]["price"]
-                                raw_prices["Total U"][idx] = b["totals"]["under"]["price"]
-                            rows.append(row)
-
-                        best_cells = set()
-                        for col, valmap in raw_prices.items():
-                            if not valmap:
-                                continue
-                            best = max(valmap.values())
-                            best_cells.update((idx, col) for idx, v in valmap.items() if v == best)
-                        odds_cols = ["Sportsbook"] + [
-                            c for c in ("ML Away", "ML Home", "Spread Away",
-                                        "Spread Home", "Total O", "Total U")
-                            if any(c in r for r in rows)
-                        ]
-                        st.markdown(
-                            odds_table_html(odds_cols, rows, best_cells),
-                            unsafe_allow_html=True,
-                        )
-                        st.caption("Green = best price for that side across all books shown.")
-                    else:
-                        st.caption("No sportsbook lines available for this game yet.")
-                    render_game_bet_ui(g, f"gamebet_{i}", use_expander=False)
-
-if tab2.open:
-    with tab2:
+if tab_results.open:
+    with tab_results:
         section_title("📊", "Results")
         for g in COMPLETED_GAMES:
             with st.container(border=True):
@@ -1513,14 +1684,8 @@ if tab2.open:
                         unsafe_allow_html=True,
                     )
 
-if tab3.open:
-    with tab3:
-        section_title("🏈", "Preseason")
-        st.caption("Props & fantasy tabs use sample lines until books post full boards.")
-        st.write("HOF Game data is archived under Results.")
-
-if tab4.open:
-    with tab4:
+if tab_trends.open:
+    with tab_trends:
         section_title("📈", "Trends")
         st.caption("Season-long and weekly trend snapshots")
 
@@ -1581,8 +1746,8 @@ if tab4.open:
                 unsafe_allow_html=True,
             )
 
-if tab5.open:
-    with tab5:
+if tab_props.open:
+    with tab_props:
         section_title("🏈", "Player Prop Bets")
         st.caption(f"Source: {'Live Odds API' if props_source == 'live' else 'Sample / illustrative lines (preseason)'} · Place Steel on Over/Under")
 
@@ -1665,13 +1830,13 @@ if tab5.open:
                                 with st.popover("🎯 Bet Steel", width="stretch"):
                                     render_prop_bet_ui(p, f"propbet_{idx}", use_expander=False)
 
-if tab6.open:
-    with tab6:
+if tab_fantasy.open:
+    with tab_fantasy:
         # Advanced season-long models + rank-by-prop (see fantasy_models.py)
         render_fantasy_tab(ALL_PROPS)
 
-if tab7.open:
-    with tab7:
+if tab_headlines.open:
+    with tab_headlines:
         section_title("📰", "Preseason Headlines")
         headline_trend_data, _ = load_trend_data()
         headline_agg = content_engine.aggregate_ats(content_engine.ats_dataframe(headline_trend_data))
@@ -1688,8 +1853,8 @@ if tab7.open:
         )
         st.markdown(f"<div>{rows_html}</div>", unsafe_allow_html=True)
 
-if tab8.open:
-    with tab8:
+if tab_mybets.open:
+    with tab_mybets:
         section_title("🧾", "My Bets")
         if not st.session_state.authenticated:
             st.warning("Log in on the Profile tab to see open and settled bets.")
@@ -1709,8 +1874,8 @@ if tab8.open:
                 else:
                     st.dataframe(pd.DataFrame(settled), use_container_width=True, hide_index=True)
 
-if tab9.open:
-    with tab9:
+if tab_profile.open:
+    with tab_profile:
         section_title("👤", "Profile")
         if not st.session_state.authenticated:
             login_tab, register_tab = st.tabs(["Login", "Create Account"])
