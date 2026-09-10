@@ -1300,6 +1300,10 @@ def load_trend_data():
 USERS_DB_PATH = "users_db.json"
 STEEL_STAKE_OPTIONS = [10, 25, 50, 100, 250, 500]
 STEEL_PRICE_USD = 0.10
+# Purchasable Steel packs. Kept separate from STEEL_STAKE_OPTIONS — that list
+# sizes individual bets, and a 1000-Steel pack shouldn't become a 1000-Steel
+# stake option on every prop card.
+STEEL_PACKS = [10, 25, 50, 100, 250, 500, 1000]
 
 def load_users():
     if os.path.exists(USERS_DB_PATH):
@@ -2121,21 +2125,37 @@ if tab_profile.open:
                     local_bets_getter=lambda: bet_store.bets_for(GUEST_USERNAME)
                 )
             with sub_buy:
-                pack_amount = st.selectbox("Steel pack",
-                                           STEEL_STAKE_OPTIONS,
-                                           format_func=lambda x: f"{x} Steel — ${x * STEEL_PRICE_USD:.2f}")
-                if st.button(f"Purchase {pack_amount} Steel", type="primary"):
+                pack_amount = st.selectbox(
+                    "Steel pack", STEEL_PACKS,
+                    index=STEEL_PACKS.index(100),
+                    format_func=lambda x: f"{x:,} Steel — ${x * STEEL_PRICE_USD:,.2f}",
+                )
+                st.caption(
+                    f"All packs price at ${STEEL_PRICE_USD:.2f} per Steel · "
+                    f"{pack_amount:,} Steel = ${pack_amount * STEEL_PRICE_USD:,.2f}"
+                )
+                if st.button(f"Purchase {pack_amount:,} Steel", type="primary"):
                     ok, msg = purchase_steel(pack_amount)
                     st.success(msg) if ok else st.error(msg)
                     if ok:
                         st.rerun()
+                st.caption(
+                    "⚠️ No payment is taken — this credits Steel straight to your "
+                    "balance. Wiring up real checkout would need a payment processor."
+                )
             with sub_history:
-                txs = current.get("transactions", []) if current else []
+                # Signed-in transactions live in Supabase; guests keep theirs
+                # in the local JSON profile. Timestamps are named differently
+                # by the two stores, hence the fallback.
+                if auth_store.signed_in():
+                    txs = auth_store.transactions()
+                else:
+                    txs = (current or {}).get("transactions", [])
                 if not txs:
                     st.caption("No transactions.")
                 else:
                     st.dataframe(pd.DataFrame([{
-                        "Date": str(t.get("timestamp", ""))[:16],
+                        "Date": str(t.get("timestamp") or t.get("created_at") or "")[:16],
                         "Type": str(t.get("type", "")).replace("_", " ").title(),
                         "Steel": t.get("steel_amount"),
                         "Note": t.get("note", "")
