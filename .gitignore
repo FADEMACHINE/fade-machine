@@ -27,3 +27,8 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local bet ledger (per-user data, not source)
+*.db
+*.db-wal
+*.db-shm

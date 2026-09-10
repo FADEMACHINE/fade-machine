@@ -337,10 +337,12 @@ def _filter_sort(slips, key_prefix, settled=False):
     return shown
 
 
-def render_my_bets_tab(profile):
+def render_my_bets_tab(open_bets, settled_bets):
+    """Open and settled bets as merged slips. Both lists come from the SQLite
+    ledger (bet_store), which is the source of truth for bets."""
     _inject_css()
-    open_slips = group_bets((profile or {}).get("open_bets", []))
-    settled_slips = group_bets((profile or {}).get("settled_bets", []))
+    open_slips = group_bets(open_bets)
+    settled_slips = group_bets(settled_bets)
     s = summarize(open_slips, settled_slips)
 
     # delta_color="off" on the contextual lines: a green up-arrow next to

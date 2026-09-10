@@ -14,6 +14,12 @@ from bet_slips import (
     render_my_bets_tab, fmt_odds, american_to_profit,
     american_to_implied_prob, implied_prob_to_american, devig_two_way,
 )
+import bet_store
+from bet_settlement import (
+    fetch_scores, scores_by_game_id, grade_bet,
+    steel_result_for, balance_credit_for,
+)
+from bet_analytics import render_bet_history_section
 import content_engine
 
 st.set_page_config(
@@ -1395,6 +1401,12 @@ def place_steel_bet(game_id, away, home, market, selection, line, odds, stake, l
         "status": "open",
         "steel_result": 0,
     }
+    # The ledger in bets.db is the source of truth for bets; users_db.json
+    # keeps the account (balance + transactions). The JSON list is still
+    # appended so an older copy of the app, or a restore from backup, still
+    # sees the bet — the store's migration is keyed on bet id, so importing
+    # the same bet twice is a no-op.
+    bet_store.record_bet(uname, bet)
     user["open_bets"].append(bet)
     user["steel_balance"] = bal - stake
     user["transactions"].append({
@@ -1408,8 +1420,69 @@ def place_steel_bet(game_id, away, home, market, selection, line, odds, stake, l
     return True, f"Bet placed: {stake} Steel on {selection.upper()} ({market}). Balance: {user['steel_balance']}"
 
 def settle_user_bets():
-    # Placeholder — real settlement would use final scores
-    pass
+    """Settle open bets whose games have finished, then credit the balance.
+
+    Runs on every rerun, but the scores request is cached (10 min) and skipped
+    entirely when the user has no settleable open bets, so it costs nothing on
+    a normal page view. Player props are left open on purpose — grading them
+    needs a box score this endpoint doesn't carry (see bet_settlement).
+    """
+    if not st.session_state.get("authenticated"):
+        return
+    uname = st.session_state.get("username")
+    pending = bet_store.open_bets_with_games(uname)
+    if not pending:
+        return
+    api_key = get_odds_api_key()
+    if not api_key:
+        return
+    try:
+        finals = scores_by_game_id(fetch_scores(api_key))
+    except Exception:
+        return  # settlement is best-effort; never block the page on it
+    if not finals:
+        return
+
+    users = load_users()
+    if uname not in users:
+        return
+    user = ensure_user_fields(users[uname])
+    settled_ids, credited = [], 0.0
+
+    for bet in pending:
+        game = finals.get(bet.get("game_id"))
+        if not game or not game.get("completed"):
+            continue
+        status, note = grade_bet(bet, game)
+        if status is None:
+            continue
+        profit = american_to_profit(bet.get("stake", 0), bet.get("odds") or -110)
+        result = steel_result_for(status, bet.get("stake", 0), profit)
+        credit = balance_credit_for(status, bet.get("stake", 0), profit)
+        bet_store.mark_settled(
+            bet["id"], status, result, datetime.utcnow().isoformat(),
+            game.get("away_score"), game.get("home_score"), note,
+        )
+        settled_ids.append(bet["id"])
+        credited += credit
+        if credit:
+            user["transactions"].append({
+                "type": f"settle_{status}",
+                "steel_amount": credit,
+                "timestamp": datetime.utcnow().isoformat(),
+                "note": f"{bet.get('label') or bet.get('market')} — {note}",
+            })
+
+    if not settled_ids:
+        return
+
+    # Mirror the settlement into the JSON account so balance and the legacy
+    # bet lists don't drift from the ledger.
+    done = set(settled_ids)
+    user["open_bets"] = [b for b in user.get("open_bets", []) if b.get("id") not in done]
+    user["steel_balance"] = round(user.get("steel_balance", 0) + credited, 2)
+    users[uname] = user
+    save_users(users)
 
 def render_prop_bet_ui(prop, key_prefix, use_expander=True):
     """Place Steel on a single player prop Over/Under."""
@@ -1564,6 +1637,12 @@ if "authenticated" not in st.session_state:
     st.session_state.username = GUEST_USERNAME
 if "username" not in st.session_state:
     st.session_state.username = GUEST_USERNAME
+
+if "bets_migrated" not in st.session_state:
+    # Idempotent: only inserts bet ids the ledger hasn't seen, so this is a
+    # no-op after the first run.
+    bet_store.migrate_from_users_json(USERS_DB_PATH)
+    st.session_state.bets_migrated = True
 
 if st.session_state.authenticated:
     settle_user_bets()
@@ -1956,7 +2035,10 @@ if tab_mybets.open:
         if not st.session_state.authenticated:
             st.warning("Log in on the Profile tab to see open and settled bets.")
         else:
-            render_my_bets_tab(get_current_profile())
+            render_my_bets_tab(
+                bet_store.bets_for(st.session_state.username, "open"),
+                bet_store.bets_for(st.session_state.username, "settled"),
+            )
 
 if tab_profile.open:
     with tab_profile:
@@ -1987,7 +2069,11 @@ if tab_profile.open:
             current = get_current_profile()
             st.success(f"Logged in as **{display_name}**")
             st.metric("Steel Balance", steel_balance)
-            sub_account, sub_buy, sub_history = st.tabs(["Account", "Buy Steel", "Transaction History"])
+            sub_account, sub_bank, sub_buy, sub_history = st.tabs(
+                ["Account", "Bet Bank", "Buy Steel", "Transaction History"]
+            )
+            with sub_bank:
+                render_bet_history_section(st.session_state.username)
             with sub_account:
                 st.write(f"Username: `{st.session_state.username}`")
                 if st.button("Log out"):
