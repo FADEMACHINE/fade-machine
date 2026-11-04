@@ -25,6 +25,8 @@ from bet_settlement import (
 )
 from bet_analytics import render_bet_history_section
 import content_engine
+import post_studio
+import cbb_tab
 
 st.set_page_config(
     page_title="FADE MACHINE | NFL Analytics",
@@ -1739,12 +1741,19 @@ live_props = fetch_live_props()
 props_source = "live" if live_props else "sample"
 ALL_PROPS = live_props if live_props else SAMPLE_PLAYER_PROPS
 
+# Private owner page: ?studio=1 swaps the tabs for the Post Studio. The odds
+# board call is the same cached one the Betting tab uses, so no extra credits.
+if st.query_params.get("studio") == "1":
+    studio_games, studio_err, _ = load_nfl_betting_board()
+    post_studio.render_post_studio(studio_games, studio_err)
+    st.stop()
+
 # Named rather than tab1..tabN so adding or removing a tab can't silently
 # shift every block below it onto the wrong panel.
-(tab_betting, tab_results, tab_trends, tab_props, tab_fantasy,
+(tab_betting, tab_results, tab_trends, tab_props, tab_fantasy, tab_cbb,
  tab_headlines, tab_mybets, tab_profile) = st.tabs([
     "🎲 Betting", "📊 Results", "📈 Trends", "🏈 Props",
-    "🏆 Fantasy", "📰 Headlines", "🧾 My Bets", "👤 Profile"
+    "🏆 Fantasy", "🏀 College Hoops", "📰 Headlines", "🧾 My Bets", "👤 Profile"
 ], on_change="rerun")
 
 if tab_betting.open:
@@ -2094,6 +2103,11 @@ if tab_fantasy.open:
     with tab_fantasy:
         # Advanced season-long models + rank-by-prop (see fantasy_models.py)
         render_fantasy_tab(ALL_PROPS)
+
+if tab_cbb.open:
+    with tab_cbb:
+        section_title("🏀", "College Hoops — MACHINE Ratings & March Madness")
+        cbb_tab.render_cbb_tab()
 
 if tab_headlines.open:
     with tab_headlines:

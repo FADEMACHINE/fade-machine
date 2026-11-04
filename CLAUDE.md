@@ -27,6 +27,9 @@ not environment variables:
 - `ODDS_API_KEY` — The Odds API (live lines, props, final scores)
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY` — historical games, accounts, durable bets
 - `SUPABASE_KEY` — used only by `scripts/load_historical_data.py`
+- `POST_STUDIO_PASSCODE` — unlocks the private Post Studio at `?studio=1`
+- `ANTHROPIC_API_KEY` — optional Claude drafting in the Post Studio
+- `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` — post to @Fade_Machine
 
 Every one is optional. Without them the app still runs on sample data and shows
 an info banner, which is the normal state in a cloud session. Never commit keys,
@@ -45,6 +48,11 @@ and never hard-code a fallback key.
 | `bet_slips.py` | Groups repeat bets into slips; the My Bets tab |
 | `bet_analytics.py` | Bet history and trend charts on the Profile tab |
 | `content_engine.py` | Headlines, leaderboards and movers derived from the data |
+| `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model |
+| `cbb_edges.py` | Editable list of CBB edges flagged on the ratings and March Madness cheat sheet |
+| `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness |
+| `post_studio.py` | Private `?studio=1` page: picks → X drafts, pick-card image, post |
+| `x_poster.py` | X API v2 posting (OAuth 1.0a) and image upload |
 | `fantasy_models.py`, `mock_draft.py` | Fantasy rankings and the mock-draft hub |
 | `db/*.sql` | Supabase schema — run by hand in the Supabase SQL editor |
 | `scripts/load_historical_data.py` | One-off nflverse → Supabase loader, not part of the app |
