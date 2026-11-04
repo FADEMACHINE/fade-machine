@@ -25,6 +25,7 @@ from bet_settlement import (
 )
 from bet_analytics import render_bet_history_section
 import content_engine
+import post_studio
 
 st.set_page_config(
     page_title="FADE MACHINE | NFL Analytics",
@@ -1738,6 +1739,13 @@ def fetch_live_props():
 live_props = fetch_live_props()
 props_source = "live" if live_props else "sample"
 ALL_PROPS = live_props if live_props else SAMPLE_PLAYER_PROPS
+
+# Private owner page: ?studio=1 swaps the tabs for the Post Studio. The odds
+# board call is the same cached one the Betting tab uses, so no extra credits.
+if st.query_params.get("studio") == "1":
+    studio_games, studio_err, _ = load_nfl_betting_board()
+    post_studio.render_post_studio(studio_games, studio_err)
+    st.stop()
 
 # Named rather than tab1..tabN so adding or removing a tab can't silently
 # shift every block below it onto the wrong panel.

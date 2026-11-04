@@ -10,3 +10,8 @@ extra-streamlit-components>=0.1.71
 
 # Ingestion-only — needed for scripts/load_historical_data.py, not the live app
 nfl_data_py>=0.3.2
+
+# Post Studio: X posting (OAuth 1.0a), Claude drafting, pick-card images
+requests-oauthlib>=1.3.1
+anthropic>=2.0.0
+pillow>=10.1.0
