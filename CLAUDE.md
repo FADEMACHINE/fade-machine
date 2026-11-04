@@ -48,6 +48,9 @@ and never hard-code a fallback key.
 | `bet_slips.py` | Groups repeat bets into slips; the My Bets tab |
 | `bet_analytics.py` | Bet history and trend charts on the Profile tab |
 | `content_engine.py` | Headlines, leaderboards and movers derived from the data |
+| `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model |
+| `cbb_edges.py` | Editable list of CBB edges flagged on the ratings and March Madness cheat sheet |
+| `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness |
 | `post_studio.py` | Private `?studio=1` page: picks → X drafts, pick-card image, post |
 | `x_poster.py` | X API v2 posting (OAuth 1.0a) and image upload |
 | `fantasy_models.py`, `mock_draft.py` | Fantasy rankings and the mock-draft hub |

@@ -345,9 +345,9 @@ def render_post_studio(games, odds_err=None):
                 st.markdown(f"- {f}")
 
     b1, b2 = st.columns(2)
-    if b1.button("Write drafts", type="primary", use_container_width=True, key="studio_tmpl"):
+    if b1.button("Write drafts", type="primary", width="stretch", key="studio_tmpl"):
         st.session_state["studio_drafts"] = template_drafts(picks, notes, cta)
-    if b2.button("Write drafts with Claude", use_container_width=True, key="studio_ai"):
+    if b2.button("Write drafts with Claude", width="stretch", key="studio_ai"):
         with st.spinner("Claude is drafting…"):
             drafts, err = claude_drafts(picks, notes, cta)
         if err == "missing_key":
