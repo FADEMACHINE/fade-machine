@@ -50,6 +50,7 @@ and never hard-code a fallback key.
 | `content_engine.py` | Headlines, leaderboards and movers derived from the data |
 | `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model |
 | `cbb_edges.py` | Editable list of CBB edges flagged on the ratings and March Madness cheat sheet |
+| `cbb_value.py` | CBB Value: scores the owner's moneyline checklist (docs/cbb-moneyline-handoff.md) with Torvik stats + ESPN lines; thresholds in `RULES` |
 | `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness |
 | `post_studio.py` | Private `?studio=1` page: picks → X drafts, pick-card image, post |
 | `x_poster.py` | X API v2 posting (OAuth 1.0a) and image upload |

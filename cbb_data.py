@@ -111,6 +111,19 @@ def _home_spread(odds, home_abbr, away_abbr):
     return None
 
 
+def _ml(odds, side):
+    """American moneyline for 'home'/'away' from ESPN's odds block: closing
+    (current) price first, then opening, then the legacy teamOdds field."""
+    ml = (odds.get("moneyline") or {}).get(side) or {}
+    for key in ("close", "open"):
+        v = _num(str((ml.get(key) or {}).get("odds", "")).replace("+", ""))
+        if v is not None:
+            return v
+    if str((ml.get("close") or {}).get("odds", "")).upper() == "EVEN":
+        return 100.0
+    return _num((odds.get(f"{side}TeamOdds") or {}).get("moneyLine"))
+
+
 def parse_events(events):
     rows = []
     for ev in events or []:
@@ -130,6 +143,8 @@ def parse_events(events):
             "home": ht.get("displayName") or ht.get("location"),
             "away": at.get("displayName") or at.get("location"),
             "home_abbr": ht.get("abbreviation"), "away_abbr": at.get("abbreviation"),
+            "home_loc": ht.get("location"), "away_loc": at.get("location"),
+            "home_short": ht.get("shortDisplayName"), "away_short": at.get("shortDisplayName"),
             "home_rank": (home.get("curatedRank") or {}).get("current"),
             "away_rank": (away.get("curatedRank") or {}).get("current"),
             "home_score": _num(home.get("score")), "away_score": _num(away.get("score")),
@@ -140,6 +155,8 @@ def parse_events(events):
             "conf_game": bool(comp.get("conferenceCompetition")),
             "home_spread": _home_spread(odds, ht.get("abbreviation"), at.get("abbreviation")) if odds else None,
             "total_line": _num(odds.get("overUnder")),
+            "home_ml": _ml(odds, "home") if odds else None,
+            "away_ml": _ml(odds, "away") if odds else None,
             "line_source": odds.get("provider", {}).get("name") if odds else None,
             "notes": notes,
             "tournament": "Men's Basketball Championship" in notes,
