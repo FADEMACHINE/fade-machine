@@ -31,7 +31,8 @@ from bet_slips import american_to_implied_prob, fmt_odds, implied_prob_to_americ
 
 TORVIK = "https://barttorvik.com"
 
-LOOKAHEAD_DAYS = 1   # admins can scope this many days past today
+LOOKAHEAD_DAYS = 1   # admins can scope this many days past today (Master Settings)
+REQUIRE_CORE = True  # a board PLAY must be in a price lane with model value (Master Settings)
 
 RULES = {
     "fav_lane": (-300, -150),      # favourite lane, inclusive
@@ -464,7 +465,7 @@ def render_value(season_games, ratings, model):
     max_day = today + timedelta(days=LOOKAHEAD_DAYS) if auth_store.is_admin() else today
     day = c[0].date_input("Games on", value=today, max_value=max_day, key="cbbv_day")
     need = c[1].slider("Checks needed to play", 3, 8, RULES["play_at"], key="cbbv_need")
-    require_core = c[2].checkbox("Require price lane + model value", value=True, key="cbbv_core",
+    require_core = c[2].checkbox("Require price lane + model value", value=REQUIRE_CORE, key="cbbv_core",
                                  help="Your history says the edge is the price lane. Keep this on to only "
                                       "play games in a lane with real model value.")
 
@@ -481,7 +482,7 @@ def render_value(season_games, ratings, model):
     plays = [r for r in results if is_play(r["pick"], require_core, need)]
     # The Model Board logs with the default rules only, so a viewer moving the
     # slider can't add or hide plays from the public record.
-    board_plays = [r for r in results if is_play(r["pick"], True, RULES["play_at"])]
+    board_plays = [r for r in results if is_play(r["pick"], REQUIRE_CORE, RULES["play_at"])]
     if board_plays and day == today:   # the public record only ever logs today's games
         _, board_err = cbb_board.log_plays(board_plays)
         if board_err:
@@ -568,13 +569,14 @@ def render_checklist(need=None):
                 "Lines: DraftKings via ESPN.")
 
 
-def lookahead(season_games, ratings, model, days=LOOKAHEAD_DAYS):
+def lookahead(season_games, ratings, model, days=None):
     """Score the next `days` days' games that already have moneylines.
     Read-only: nothing is logged to the public board. Returns
     ([(date, results, plays, top3_candidates, games_on_date)], stats_source)."""
+    days = LOOKAHEAD_DAYS if days is None else days
     tv, source = load_team_stats(cd.season_for())
-    if tv.empty:
-        return [], None
+    if tv.empty or days < 1:
+        return [], source
     out = []
     today = datetime.now(cd.ET).date()
     for i in range(1, days + 1):
@@ -582,6 +584,6 @@ def lookahead(season_games, ratings, model, days=LOOKAHEAD_DAYS):
         events, _ = cd.fetch_events([d])
         day_games = cd.parse_events(events)
         results = evaluate_day(day_games, season_games, tv, ratings, model) if not day_games.empty else []
-        plays = [r for r in results if is_play(r["pick"], True, RULES["play_at"])]
+        plays = [r for r in results if is_play(r["pick"], REQUIRE_CORE, RULES["play_at"])]
         out.append((d, results, plays, cbb_board.top3_candidates(results), len(day_games)))
     return out, source

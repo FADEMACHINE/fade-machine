@@ -16,6 +16,8 @@ Requires db/auth_schema.sql to have been run. Until it is, sign-in still works
 but profile/bet reads fail — `tables_ready()` reports that, and callers show a
 setup message rather than crashing.
 """
+import time
+
 import streamlit as st
 
 SESSION_KEY = "sb_session"
@@ -39,29 +41,66 @@ def configured():
     return bool(url and key)
 
 
-@st.cache_resource(show_spinner=False)
-def _client_for(url, key):
-    from supabase import create_client
-    return create_client(url, key)
+_CLIENT_KEY = "_fm_sb_client"
+_PENDING_COOKIE = "_fm_cookie_pending"   # a rotated refresh token auth_ui should save
+REFRESH_MARGIN_S = 300                   # renew the access token this long before expiry
+
+
+def _new_client(url, key):
+    from supabase import ClientOptions, create_client
+    # No background auto-refresh: it would rotate the refresh token behind our
+    # back and leave the browser cookie holding a dead one.
+    return create_client(url, key, options=ClientOptions(
+        auto_refresh_token=False, persist_session=False))
 
 
 def client():
-    """A Supabase client carrying the current session's access token, if any.
+    """This browser session's own Supabase client, carrying its access token.
 
-    The token has to be re-applied per rerun: the client object is cached
-    across reruns, but session state is what actually tracks who is signed in.
+    One client per session, never shared: a single cached client would carry
+    whichever user signed in last, so one visitor's request could run as
+    another. The access token is renewed shortly before it expires.
     """
     url, key = _secrets()
     if not (url and key):
         return None
-    c = _client_for(url, key)
+    c = st.session_state.get(_CLIENT_KEY)
+    if c is None:
+        try:
+            c = _new_client(url, key)
+        except Exception:
+            return None
+        st.session_state[_CLIENT_KEY] = c
     sess = st.session_state.get(SESSION_KEY)
+    if sess and sess.get("refresh_token") and sess.get("expires_at") \
+            and sess["expires_at"] - time.time() < REFRESH_MARGIN_S:
+        _refresh(c, sess["refresh_token"])
+        sess = st.session_state.get(SESSION_KEY)
     if sess and sess.get("access_token"):
         try:
             c.postgrest.auth(sess["access_token"])
         except Exception:
             pass
     return c
+
+
+def _refresh(c, refresh_token):
+    """Swap a refresh token for a new session. Supabase rotates refresh tokens
+    (each works once), so the new one is queued for the cookie."""
+    try:
+        res = c.auth.refresh_session(refresh_token)
+    except Exception:
+        return None
+    if not (res and res.session):
+        return None
+    sess = _store_session(res.session)
+    st.session_state[_PENDING_COOKIE] = sess.get("refresh_token")
+    return sess
+
+
+def take_pending_cookie():
+    """The refresh token to write to the browser cookie, if it changed."""
+    return st.session_state.pop(_PENDING_COOKIE, None)
 
 
 def _store_session(session):
@@ -73,6 +112,7 @@ def _store_session(session):
         "refresh_token": session.refresh_token,
         "user_id": session.user.id if session.user else None,
         "email": session.user.email if session.user else None,
+        "expires_at": getattr(session, "expires_at", None) or (time.time() + 3600),
     }
     return st.session_state[SESSION_KEY]
 
@@ -91,19 +131,25 @@ def signed_in():
 
 
 def is_admin():
-    """Signed in with an email listed in the ADMIN_EMAILS secret (comma-separated).
-    The email comes from the verified Supabase session, never from user input."""
-    s = current_session()
-    email = (s or {}).get("email")
-    if not (s and s.get("user_id") and email):
+    """Signed in with an account listed in the Supabase `admin_users` table
+    (db/admin_settings.sql). Checked with the user's own session, so the
+    database decides; cached for the browser session."""
+    uid = current_user_id()
+    if not uid:
         return False
-    try:
-        allowed = st.secrets.get("ADMIN_EMAILS") or ""
-    except Exception:
-        return False
-    if isinstance(allowed, (list, tuple)):
-        allowed = ",".join(allowed)
-    return email.strip().lower() in {e.strip().lower() for e in str(allowed).split(",") if e.strip()}
+    cached = st.session_state.get("_fm_is_admin")
+    if cached and cached[0] == uid:
+        return cached[1]
+    c = client()
+    ok = False
+    if c is not None:
+        try:
+            ok = bool(c.table("admin_users").select("user_id").eq("user_id", uid)
+                      .limit(1).execute().data)
+        except Exception:
+            ok = False
+    st.session_state["_fm_is_admin"] = (uid, ok)
+    return ok
 
 
 def _friendly(exc):
@@ -158,11 +204,7 @@ def restore_from_refresh_token(token):
     c = client()
     if c is None:
         return None
-    try:
-        res = c.auth.refresh_session(token)
-    except Exception:
-        return None
-    return _store_session(res.session) if res and res.session else None
+    return _refresh(c, token)
 
 
 def sign_out():
@@ -173,6 +215,10 @@ def sign_out():
     except Exception:
         pass
     st.session_state.pop(SESSION_KEY, None)
+    st.session_state.pop(_CLIENT_KEY, None)
+    st.session_state.pop(_PENDING_COOKIE, None)
+    st.session_state.pop("_fm_is_admin", None)
+    st.session_state["_auth_restore_tries"] = 99   # don't sign straight back in from the old cookie
 
 
 # ---- Durable data -----------------------------------------------------------

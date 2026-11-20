@@ -30,7 +30,6 @@ not environment variables:
 - `POST_STUDIO_PASSCODE` — unlocks the private Post Studio at `?studio=1`
 - `ANTHROPIC_API_KEY` — optional Claude drafting in the Post Studio
 - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` — post to @Fade_Machine
-- `ADMIN_EMAILS` — comma-separated emails of admin accounts (signed in via Supabase). Unlocks admin-only tools such as the Machine Model's tomorrow lookahead. Never hard-code an email
 - `CBBD_API_KEY` — CollegeBasketballData.com (CBB team stats for the checklist). Free key = 1,000 calls/month: keep the 12-hour cache and the job's two scoring runs a day
 
 Every one is optional. Without them the app still runs on sample data and shows
@@ -45,7 +44,8 @@ and never hard-code a fallback key.
 | `matchup_trends.py` | Game/matchup ATS trends from the Supabase `games` table |
 | `bet_store.py` | SQLite ledger (`bets.db`) for guest bets |
 | `user_data.py` | Routes bet reads/writes: signed in → Supabase, guest → SQLite |
-| `auth_store.py`, `auth_ui.py` | Optional Supabase sign-in, cookie-backed sessions |
+| `auth_store.py`, `auth_ui.py` | Optional Supabase sign-in, cookie-backed sessions. One Supabase client per browser session (never shared); refresh tokens rotate, so every refresh writes the new one back to the cookie. `is_admin()` = row in `admin_users` |
+| `app_settings.py` | Admin Master Settings (Profile → ⚙️ Master Settings): checklist thresholds, Top 3 lock time/size, lookahead, pause. Stored in Supabase `app_settings` (db/admin_settings.sql); `apply()` pushes them onto the model for the app and the daily job |
 | `bet_settlement.py` | Settles open bets from The Odds API `/scores` |
 | `bet_slips.py` | Groups repeat bets into slips; the My Bets tab |
 | `bet_analytics.py` | Bet history and trend charts on the Profile tab |

@@ -46,7 +46,7 @@ def _read_refresh_token():
         return None
 
 
-def _write_refresh_token(token):
+def _write_refresh_token(token, key="fm_cookie_set"):
     from datetime import datetime, timedelta, timezone
     mgr = _cookie_manager()
     if mgr is None or not token:
@@ -55,7 +55,7 @@ def _write_refresh_token(token):
         mgr.set(
             auth_store.COOKIE_NAME, token,
             expires_at=datetime.now(timezone.utc) + timedelta(days=auth_store.COOKIE_DAYS),
-            key="fm_cookie_set",
+            key=key,
         )
     except Exception:
         pass
@@ -72,15 +72,25 @@ def _clear_refresh_token():
 
 
 def restore_session():
-    """Re-sign-in from the stored refresh token. Runs once per session."""
-    if auth_store.signed_in() or st.session_state.get("_auth_restore_tried"):
+    """Keep a signed-in browser signed in. Call at the top of every run.
+
+    - Re-signs in from the cookie on a fresh visit. The cookie component only
+      reports its value from the second run, so this tries a few runs.
+    - Saves the rotated refresh token back to the cookie whenever it changes
+      (Supabase refresh tokens work once), which also slides the expiry.
+    """
+    pending = auth_store.take_pending_cookie()
+    if pending:
+        _write_refresh_token(pending, key="fm_cookie_rotate")
+    if auth_store.signed_in() or not auth_store.configured():
         return
-    st.session_state["_auth_restore_tried"] = True
-    if not auth_store.configured():
+    tries = st.session_state.get("_auth_restore_tries", 0)
+    if tries >= 3:
         return
+    st.session_state["_auth_restore_tries"] = tries + 1
     token = _read_refresh_token()
-    if token:
-        auth_store.restore_from_refresh_token(token)
+    if token and auth_store.restore_from_refresh_token(token):
+        _write_refresh_token(auth_store.take_pending_cookie(), key="fm_cookie_rotate")
 
 
 def render_account_panel(local_bets_getter=None):
@@ -122,6 +132,7 @@ def render_account_panel(local_bets_getter=None):
                 except auth_store.AuthError as e:
                     st.error(str(e))
                 else:
+                    auth_store.take_pending_cookie()
                     if remember and sess:
                         _write_refresh_token(sess.get("refresh_token"))
                     st.success("Signed in.")

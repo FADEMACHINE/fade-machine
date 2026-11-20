@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import cbb_data as cd
+import app_settings
 import auth_store
 import cbb_board
 import cbb_edges
@@ -188,6 +189,7 @@ def _march(games, r, model):
 
 # ---- Entry -----------------------------------------------------------------
 def render_cbb_tab():
+    app_settings.apply()   # admin Master Settings drive the checklist, Top 3 and lookahead
     season = cd.season_for()
     with st.spinner("Loading the college basketball season…"):
         games, failed = cd.load_season(season)

@@ -27,6 +27,7 @@ RULES_VERSION = "v1"   # bump when cbb_value.RULES change in a way that matters
 TOP3_LOCK_HOUR = 10    # ET: the day's Top 3 is chosen at the first check after this
 TOP_N = 3
 TABLES = ("model_plays", "machine_top3")
+PAUSED = False         # Master Settings: stop logging plays / locking the Top 3
 
 
 # ---- Storage ---------------------------------------------------------------
@@ -80,7 +81,7 @@ def log_plays(plays, throttle=True):
     Returns (rows_sent, error). In the app, each game is sent at most once an
     hour per session so reruns don't hammer the database."""
     c = _client()
-    if c is None or not plays:
+    if c is None or not plays or PAUSED:
         return 0, None
     rows = [play_row(r) for r in plays]
     now = datetime.now().timestamp()
@@ -109,6 +110,18 @@ def top3_candidates(results):
     return sorted(pool, key=lambda r: (-r["pick"]["passed"], -r["pick"]["value"]))[:TOP_N]
 
 
+def has_top3(day):
+    """True if the day's Top 3 is already locked (a free Supabase read)."""
+    c = _client()
+    if c is None:
+        return False
+    try:
+        return bool(c.table("machine_top3").select("id").eq("game_date", day.isoformat())
+                    .limit(1).execute().data)
+    except Exception:
+        return False
+
+
 def top3_due(day, now=None):
     now = now or datetime.now(cd.ET)
     return day == now.date() and now.hour >= TOP3_LOCK_HOUR
@@ -118,7 +131,7 @@ def select_top3(results, day, force=False):
     """Lock in the day's Top 3 once. Returns (picked_count, error).
     Does nothing if the day already has picks or it's before the lock hour."""
     c = _client()
-    if c is None or (not force and not top3_due(day)):
+    if c is None or PAUSED or (not force and not top3_due(day)):
         return 0, None
     flag = f"top3_done_{day.isoformat()}"
     if not force:
@@ -465,6 +478,9 @@ def render_lookahead(days, source):
 
 def render_board():
     bet = _bet_keys()
+    if PAUSED:
+        st.warning("The Machine Model is paused by the admin: no new plays or Top 3 picks are being "
+                   "made. Existing picks are still graded.")
 
     st.markdown("### 🎯 MACHINE Top 3")
     st.caption(f"Every day at {TOP3_LOCK_HOUR} AM ET the MACHINE MODEL locks in its 3 best-edge "
