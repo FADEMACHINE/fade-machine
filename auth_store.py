@@ -90,6 +90,22 @@ def signed_in():
     return bool(current_user_id())
 
 
+def is_admin():
+    """Signed in with an email listed in the ADMIN_EMAILS secret (comma-separated).
+    The email comes from the verified Supabase session, never from user input."""
+    s = current_session()
+    email = (s or {}).get("email")
+    if not (s and s.get("user_id") and email):
+        return False
+    try:
+        allowed = st.secrets.get("ADMIN_EMAILS") or ""
+    except Exception:
+        return False
+    if isinstance(allowed, (list, tuple)):
+        allowed = ",".join(allowed)
+    return email.strip().lower() in {e.strip().lower() for e in str(allowed).split(",") if e.strip()}
+
+
 def _friendly(exc):
     msg = str(getattr(exc, "message", None) or exc)
     low = msg.lower()

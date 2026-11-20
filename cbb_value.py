@@ -24,11 +24,14 @@ import pandas as pd
 import requests
 import streamlit as st
 
+import auth_store
 import cbb_board
 import cbb_data as cd
 from bet_slips import american_to_implied_prob, fmt_odds, implied_prob_to_american
 
 TORVIK = "https://barttorvik.com"
+
+LOOKAHEAD_DAYS = 1   # admins can scope this many days past today
 
 RULES = {
     "fav_lane": (-300, -150),      # favourite lane, inclusive
@@ -456,7 +459,10 @@ def render_value(season_games, ratings, model):
                f"Lines: DraftKings via ESPN. Stats: {STATS_SOURCES[source]}. Read-only analytics.")
 
     c = st.columns(3)
-    day = c[0].date_input("Games on", value=datetime.now(cd.ET).date(), key="cbbv_day")
+    today = datetime.now(cd.ET).date()
+    # Looking ahead at tomorrow's lines is an admin-only tool (Machine Model page).
+    max_day = today + timedelta(days=LOOKAHEAD_DAYS) if auth_store.is_admin() else today
+    day = c[0].date_input("Games on", value=today, max_value=max_day, key="cbbv_day")
     need = c[1].slider("Checks needed to play", 3, 8, RULES["play_at"], key="cbbv_need")
     require_core = c[2].checkbox("Require price lane + model value", value=True, key="cbbv_core",
                                  help="Your history says the edge is the price lane. Keep this on to only "
@@ -476,12 +482,12 @@ def render_value(season_games, ratings, model):
     # The Model Board logs with the default rules only, so a viewer moving the
     # slider can't add or hide plays from the public record.
     board_plays = [r for r in results if is_play(r["pick"], True, RULES["play_at"])]
-    if board_plays and day >= datetime.now(cd.ET).date():
+    if board_plays and day == today:   # the public record only ever logs today's games
         _, board_err = cbb_board.log_plays(board_plays)
         if board_err:
             st.caption(f"⚠️ {board_err}")
     # Backup for the daily job: lock today's Top 3 if it hasn't been yet.
-    _, top_err = cbb_board.select_top3(results, day)
+    _, top_err = cbb_board.select_top3(results, day) if day == today else (0, None)
     if top_err:
         st.caption(f"⚠️ {top_err}")
     st.markdown(f"**{len(plays)} PLAY** of {len(results)} games with lines")
@@ -560,3 +566,22 @@ def render_checklist(need=None):
                 "the price lane and model value.** Neutral sites are flagged for a closer look but "
                 "not scored. Stats: CollegeBasketballData.com (Bart Torvik as backup). "
                 "Lines: DraftKings via ESPN.")
+
+
+def lookahead(season_games, ratings, model, days=LOOKAHEAD_DAYS):
+    """Score the next `days` days' games that already have moneylines.
+    Read-only: nothing is logged to the public board. Returns
+    ([(date, results, plays, top3_candidates, games_on_date)], stats_source)."""
+    tv, source = load_team_stats(cd.season_for())
+    if tv.empty:
+        return [], None
+    out = []
+    today = datetime.now(cd.ET).date()
+    for i in range(1, days + 1):
+        d = today + timedelta(days=i)
+        events, _ = cd.fetch_events([d])
+        day_games = cd.parse_events(events)
+        results = evaluate_day(day_games, season_games, tv, ratings, model) if not day_games.empty else []
+        plays = [r for r in results if is_play(r["pick"], True, RULES["play_at"])]
+        out.append((d, results, plays, cbb_board.top3_candidates(results), len(day_games)))
+    return out, source

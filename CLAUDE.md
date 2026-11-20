@@ -30,6 +30,7 @@ not environment variables:
 - `POST_STUDIO_PASSCODE` — unlocks the private Post Studio at `?studio=1`
 - `ANTHROPIC_API_KEY` — optional Claude drafting in the Post Studio
 - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` — post to @Fade_Machine
+- `ADMIN_EMAILS` — comma-separated emails of admin accounts (signed in via Supabase). Unlocks admin-only tools such as the Machine Model's tomorrow lookahead. Never hard-code an email
 - `CBBD_API_KEY` — CollegeBasketballData.com (CBB team stats for the checklist). Free key = 1,000 calls/month: keep the 12-hour cache and the job's two scoring runs a day
 
 Every one is optional. Without them the app still runs on sample data and shows

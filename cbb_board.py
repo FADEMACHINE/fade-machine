@@ -419,6 +419,50 @@ def render_pick_cards(df, bet, with_rank=False, limit=None):
                     for c in checks))
 
 
+def _preview_frame(results):
+    """Unsaved picks shaped like board rows, so they render as the same cards."""
+    rows = []
+    for r in results:
+        row = play_row(r)
+        row.update({"status": "pending", "home_score": None, "away_score": None, "units": 0.0})
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df["tip_time"] = pd.to_datetime(df["tip_time"], utc=True, errors="coerce")
+        df["game_date"] = pd.to_datetime(df["game_date"]).dt.date
+    return df
+
+
+def render_lookahead(days, source):
+    """Admin-only: tomorrow's potential picks from lines already posted.
+    Nothing here is saved; the public record only logs a game on its own day."""
+    st.markdown("### 🔭 Tomorrow's lookahead · admin only")
+    st.caption("Scores tomorrow's games that already have moneylines, so you can scope lines early. "
+               "Not saved and not public: the Top 3 and the checklist record still lock on game day, "
+               "at that day's prices. Lines and stats can change before then.")
+    if not days:
+        st.info("Team stats aren't reachable right now, so tomorrow can't be scored.")
+        return
+    for d, results, plays, top3, n_games in days:
+        st.markdown(f"**{d:%A %b %-d}:** {n_games} games scheduled, {len(results)} with moneylines posted, "
+                    f"{len(plays)} meeting the checklist right now")
+        if not results:
+            st.caption("No moneylines posted yet. Check back later. Books usually post most lines the day before.")
+            continue
+        if top3:
+            st.markdown("Top 3 if it locked now")
+            df = _preview_frame(top3)
+            df["rank"] = range(1, len(df) + 1)
+            render_pick_cards(df, set(), with_rank=True)
+        top_ids = {r["game"]["id"] for r in top3}
+        others = [r for r in plays if r["game"]["id"] not in top_ids]
+        if others:
+            st.markdown("Also meeting the checklist")
+            render_pick_cards(_preview_frame(others), set())
+    if source:
+        st.caption(f"Stats: {source}. Lines: DraftKings via ESPN.")
+
+
 def render_board():
     bet = _bet_keys()
 
