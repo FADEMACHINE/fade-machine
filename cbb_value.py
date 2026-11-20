@@ -356,6 +356,10 @@ def render_value(season_games, ratings, model):
         _, board_err = cbb_board.log_plays(board_plays)
         if board_err:
             st.caption(f"⚠️ {board_err}")
+    # Backup for the daily job: lock today's Top 3 if it hasn't been yet.
+    _, top_err = cbb_board.select_top3(results, day)
+    if top_err:
+        st.caption(f"⚠️ {top_err}")
     st.markdown(f"**{len(plays)} PLAY** of {len(results)} games with lines")
     only = st.checkbox("Show plays only", value=bool(plays), key="cbbv_only")
 
@@ -396,17 +400,38 @@ def render_value(season_games, ratings, model):
                 icon = "✅" if ch["passed"] is True else "❌" if ch["passed"] is False else "➖"
                 st.markdown(f"{icon} **{ch['name']}**: {ch['detail']}")
 
-    with st.expander("How this works"):
-        st.markdown(
-            f"- **Price lane:** favourites {fmt_odds(RULES['fav_lane'][0])} to {fmt_odds(RULES['fav_lane'][1])}, "
-            f"dogs {fmt_odds(RULES['dog_lane'][0])} to {fmt_odds(RULES['dog_lane'][1])}.\n"
-            f"- **Model value:** Torvik efficiency and tempo give a projected margin, turned into a win %. "
-            f"Value = model win % minus the book's implied %; {RULES['min_value_pts']:g}+ points passes.\n"
-            "- **Schedule:** rest days, back-to-backs and 3 games in 4 days from this season's ESPN results.\n"
-            "- **Motivation:** consolation games fail; an opponent coming off a win over a ranked team "
-            "(letdown spot) passes.\n"
-            "- **Free throws, rebounding, turnovers, shooting profile:** Torvik four factors, each side "
-            "matched against the other's defence.\n"
-            "- **Ratings lag:** before mid-December the season-only MACHINE rating must agree there's value.\n"
-            "- **Roster continuity:** not scored yet (no free returning-minutes feed wired in).\n"
-            f"- **PLAY** when {need}+ checks pass. All thresholds are in `RULES` in cbb_value.py.")
+    with st.expander("The MACHINE MODEL checklist"):
+        render_checklist(need)
+
+
+def checklist_rows():
+    """The checklist as (check, what it takes to pass), built from RULES so the
+    page always matches what the model actually does."""
+    lo, hi = RULES["fav_lane"]; dlo, dhi = RULES["dog_lane"]
+    m, d = RULES["ratings_settle"]
+    return [
+        ("Price lane", f"Moneyline between {fmt_odds(lo)} and {fmt_odds(hi)}, or {fmt_odds(dlo)} and {fmt_odds(dhi)}"),
+        ("Model value", f"Model win % beats the book's implied win % by {RULES['min_value_pts']:g}+ points "
+                        "(Bart Torvik efficiency and tempo)"),
+        ("Roster continuity", "Returning minutes. Not scored yet: no free data source"),
+        ("Schedule / fatigue", f"Opponent on a back-to-back or 3rd game in 4 days while we're not, or "
+                               f"{RULES['rest_edge_days']}+ more days of rest"),
+        ("Motivation", "Opponent in a letdown spot after beating a ranked team. Consolation games never pass"),
+        ("Free throws", f"{RULES['ft_edge']:g}+ more free throws made per 100 shots, shooting {RULES['ft_min_pct']:g}%+ at the line"),
+        ("Rebounding", f"{RULES['reb_edge']:g}+ point edge in expected offensive rebound %"),
+        ("Guards / turnovers", f"{RULES['to_edge']:g}+ point edge in expected turnover %"),
+        ("Shooting profile", "Favourites: take fewer 3s than the D1 median (steadier). "
+                             "Underdogs: top third in 3-point rate (upset variance)"),
+        ("Ratings lag", f"After {datetime(2000, m, d):%B %-d} passes automatically. Before that, the "
+                        "season-only MACHINE rating must also show value"),
+    ]
+
+
+def render_checklist(need=None):
+    need = RULES["play_at"] if need is None else need
+    rows = checklist_rows()
+    st.markdown("| # | Check | To pass |\n|---|---|---|\n" + "\n".join(
+        f"| {i} | **{name}** | {rule} |" for i, (name, rule) in enumerate(rows, 1)))
+    st.markdown(f"**A game qualifies for the MACHINE MODEL when {need}+ checks pass, including "
+                "the price lane and model value.** Neutral sites are flagged for a closer look but "
+                "not scored. Stats: Bart Torvik. Lines: DraftKings via ESPN.")

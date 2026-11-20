@@ -211,12 +211,15 @@ def render_cbb_tab():
     ratings = _with_flags(ratings)
 
     board, value, model_board, power, team, march = st.tabs(
-        ["📅 Board", "💰 CBB Value", "📋 Model Board", "📊 Power Ratings", "🔎 Team", "🏆 March Madness"])
+        ["📅 Board", "💰 CBB Value", "📋 Machine Model", "📊 Power Ratings", "🔎 Team", "🏆 March Madness"])
     with board:
         _board(games, ratings, model)
     with value:
         cbb_value.render_value(games, ratings, model)
     with model_board:
+        st.markdown("### ✅ The MACHINE MODEL checklist")
+        cbb_value.render_checklist()
+        st.divider()
         cbb_board.render_board()
     with power:
         _ratings(ratings)
