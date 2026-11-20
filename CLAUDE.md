@@ -30,6 +30,7 @@ not environment variables:
 - `POST_STUDIO_PASSCODE` — unlocks the private Post Studio at `?studio=1`
 - `ANTHROPIC_API_KEY` — optional Claude drafting in the Post Studio
 - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` — post to @Fade_Machine
+- `CBBD_API_KEY` — CollegeBasketballData.com (CBB team stats for the checklist). Free key = 1,000 calls/month: keep the 12-hour cache and the job's two scoring runs a day
 
 Every one is optional. Without them the app still runs on sample data and shows
 an info banner, which is the normal state in a cloud session. Never commit keys,
@@ -50,7 +51,7 @@ and never hard-code a fallback key.
 | `content_engine.py` | Headlines, leaderboards and movers derived from the data |
 | `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model |
 | `cbb_edges.py` | Editable list of CBB edges flagged on the ratings and March Madness cheat sheet |
-| `cbb_value.py` | CBB Value: scores the owner's moneyline checklist (docs/cbb-moneyline-handoff.md) with Torvik stats + ESPN lines; thresholds in `RULES` |
+| `cbb_value.py` | CBB Value: scores the owner's moneyline checklist (docs/cbb-moneyline-handoff.md) with CollegeBasketballData.com stats (Torvik as backup; Torvik blocks GitHub's servers) + ESPN lines; thresholds in `RULES` |
 | `cbb_board.py` | Machine Model page: logs every CBB Value PLAY (`model_plays`) and the daily MACHINE Top 3 (`machine_top3`), both locked at the price found and graded from ESPN finals |
 | `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness |
 | `real_bets.py` | Profile → Real Bets: Juice Reel CSV import (no API exists) and real-money ROI analysis; Supabase table in `db/real_bets.sql` |
@@ -58,7 +59,7 @@ and never hard-code a fallback key.
 | `x_poster.py` | X API v2 posting (OAuth 1.0a) and image upload |
 | `fantasy_models.py`, `mock_draft.py` | Fantasy rankings and the mock-draft hub |
 | `db/*.sql` | Supabase schema — run by hand in the Supabase SQL editor |
-| `scripts/daily_model_check.py` | Run by `.github/workflows/daily-model-check.yml` several times a day: logs plays, locks the Top 3, grades results. Needs `SUPABASE_URL`/`SUPABASE_ANON_KEY` as GitHub repo secrets |
+| `scripts/daily_model_check.py` | Run by `.github/workflows/daily-model-check.yml` several times a day: logs plays, locks the Top 3, grades results. Needs `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `CBBD_API_KEY` as GitHub repo secrets |
 | `scripts/load_historical_data.py` | One-off nflverse → Supabase loader, not part of the app |
 
 Helper modules are imported by `app.py` and must not import `app.py` back

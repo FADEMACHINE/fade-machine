@@ -6,8 +6,8 @@ Does what opening the CBB Value view does, without anyone opening it:
   3. locks in the day's MACHINE Top 3 (first run after the lock hour)
   4. grades finished picks in both records from ESPN final scores
 
-Reads SUPABASE_URL and SUPABASE_ANON_KEY from the environment (GitHub repo
-secrets), because there's no st.secrets outside Streamlit. Run locally with:
+Reads SUPABASE_URL, SUPABASE_ANON_KEY and CBBD_API_KEY from the environment
+(GitHub repo secrets), because there's no st.secrets outside Streamlit. Run locally with:
 
     SUPABASE_URL=... SUPABASE_ANON_KEY=... python scripts/daily_model_check.py [--force-top3]
 """
@@ -22,7 +22,11 @@ import cbb_data as cd  # noqa: E402
 import cbb_value as cv  # noqa: E402
 
 
+SCORE_HOURS = {10, 11, 16, 17}   # ET hours of the two scoring runs (winter / daylight time)
+
+
 def main():
+    cv.CBBD_KEY = os.environ.get("CBBD_API_KEY")
     url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_ANON_KEY")
     if not (url and key):
         print("SUPABASE_URL / SUPABASE_ANON_KEY are not set; add them as GitHub repo secrets.")
@@ -37,14 +41,23 @@ def main():
 
     season = cd.season_for(today)
     games, failed = cd.load_season(season)
-    if games.empty:
-        print("ESPN scoreboard unavailable; nothing scored.")
-    tv = cv.load_torvik(season)
-    if tv.empty:
-        print("Torvik stats unavailable; nothing scored.")
-
     problems = []
-    if not games.empty and not tv.empty:
+    # CollegeBasketballData's free key allows 1,000 calls a month and scoring
+    # costs 3, so only two runs a day score (about 10 AM and 4 PM ET, an hour
+    # later in daylight time) plus any run started by hand. The rest only grade.
+    manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or "--force-top3" in sys.argv
+    scoring = manual or now.hour in SCORE_HOURS
+    if not scoring:
+        print("Grading-only run (games are scored around 10 AM and 4 PM ET).")
+    if scoring and games.empty:
+        problems.append("ESPN scoreboard unavailable, so nothing was scored")
+    tv, source = (cv.load_team_stats(season) if scoring and not games.empty else (None, None))
+    if scoring and not games.empty and tv.empty:
+        problems.append(f"Team stats unavailable, so nothing was scored: {cv.STATS_LAST_ERROR['msg']}")
+    if source:
+        print(f"Stats: {cv.STATS_SOURCES[source]}")
+
+    if scoring and not games.empty and not tv.empty:
         ratings, model = cd.fit_ratings(games)
         events, _ = cd.fetch_events([today])
         day_games = cd.parse_events(events)
