@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import cbb_data as cd
+import cbb_board
 import cbb_edges
 import cbb_value
 
@@ -209,12 +210,14 @@ def render_cbb_tab():
                    "average on purpose. Treat edges as a watchlist until teams have 8-10 games.")
     ratings = _with_flags(ratings)
 
-    board, value, power, team, march = st.tabs(
-        ["📅 Board", "💰 CBB Value", "📊 Power Ratings", "🔎 Team", "🏆 March Madness"])
+    board, value, model_board, power, team, march = st.tabs(
+        ["📅 Board", "💰 CBB Value", "📋 Model Board", "📊 Power Ratings", "🔎 Team", "🏆 March Madness"])
     with board:
         _board(games, ratings, model)
     with value:
         cbb_value.render_value(games, ratings, model)
+    with model_board:
+        cbb_board.render_board()
     with power:
         _ratings(ratings)
     with team:

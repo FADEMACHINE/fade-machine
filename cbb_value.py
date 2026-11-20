@@ -23,6 +23,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
+import cbb_board
 import cbb_data as cd
 from bet_slips import american_to_implied_prob, fmt_odds, implied_prob_to_american
 
@@ -348,6 +349,13 @@ def render_value(season_games, ratings, model):
         return
 
     plays = [r for r in results if is_play(r["pick"], require_core, need)]
+    # The Model Board logs with the default rules only, so a viewer moving the
+    # slider can't add or hide plays from the public record.
+    board_plays = [r for r in results if is_play(r["pick"], True, RULES["play_at"])]
+    if board_plays and day >= datetime.now(cd.ET).date():
+        _, board_err = cbb_board.log_plays(board_plays)
+        if board_err:
+            st.caption(f"⚠️ {board_err}")
     st.markdown(f"**{len(plays)} PLAY** of {len(results)} games with lines")
     only = st.checkbox("Show plays only", value=bool(plays), key="cbbv_only")
 
