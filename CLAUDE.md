@@ -51,6 +51,7 @@ and never hard-code a fallback key.
 | `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model |
 | `cbb_edges.py` | Editable list of CBB edges flagged on the ratings and March Madness cheat sheet |
 | `cbb_value.py` | CBB Value: scores the owner's moneyline checklist (docs/cbb-moneyline-handoff.md) with Torvik stats + ESPN lines; thresholds in `RULES` |
+| `cbb_board.py` | Model Board: logs every CBB Value PLAY to Supabase `model_plays` (db/model_plays.sql) at the price found, grades from ESPN finals |
 | `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness |
 | `real_bets.py` | Profile → Real Bets: Juice Reel CSV import (no API exists) and real-money ROI analysis; Supabase table in `db/real_bets.sql` |
 | `post_studio.py` | Private `?studio=1` page: picks → X drafts, pick-card image, post |
