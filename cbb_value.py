@@ -7,7 +7,8 @@ only when enough checks agree.
 
 Sources (all free, no Odds API credits):
   - ESPN scoreboard (via cbb_data): schedule, venue, results, DraftKings moneylines
-  - Bart Torvik static CSVs: adjusted efficiency, tempo and four-factor stats
+  - CollegeBasketballData.com API (CBBD_API_KEY): adjusted efficiency, pace, four factors
+  - Bart Torvik static CSVs: the same stats, used when there's no key or CBBD fails
   - MACHINE ratings (cbb_data.fit_ratings): this season's results only
 
 Every threshold lives in RULES below so it can be tuned without touching the
@@ -94,15 +95,17 @@ def _read_torvik_csv(text):
     return df
 
 
-def _plausible(df):
+def _plausible(df, tolerance=0.0):
     """Guard against a silent format change: every stat must sit in a
-    believable range for D1, or we refuse to use the file."""
+    believable range for D1 (allowing `tolerance` share of stray outliers),
+    or we refuse to use the data."""
     bounds = {"adjoe": (70, 140), "adjde": (70, 140), "adjt": (55, 85), "efg": (30, 70),
               "ftr": (5, 80), "orb": (5, 60), "orb_allowed": (5, 60), "to": (5, 35),
               "to_forced": (5, 35), "three_rate": (10, 75), "ft_pct": (40, 100)}
     for col, (lo, hi) in bounds.items():
         vals = pd.to_numeric(df[col], errors="coerce")
-        if vals.isna().any() or not vals.between(lo, hi).all():
+        bad = vals.isna() | ~vals.between(lo, hi)
+        if bad.mean() > tolerance:
             return False
     return True
 
@@ -148,6 +151,111 @@ def load_torvik(season):
         return pd.DataFrame()
     df["key"] = df["team"].map(_norm)
     return df.drop_duplicates("key").set_index("key")
+
+
+# ---- CollegeBasketballData.com (primary when a key is set) -----------------
+CBBD = "https://api.collegebasketballdata.com"
+CBBD_KEY = None   # the daily job sets this from its environment; the app uses st.secrets
+# Free keys allow 1,000 calls a month and a full load is 3 calls, so the app
+# caches for 12 hours and the team list for a week. See scripts/daily_model_check.py
+# for the job's budget.
+
+
+def _cbbd_key():
+    if CBBD_KEY:
+        return CBBD_KEY
+    try:
+        return st.secrets.get("CBBD_API_KEY")
+    except Exception:
+        return None
+
+
+def _cbbd_get(path, key):
+    resp = requests.get(f"{CBBD}/{path}", headers={"Authorization": f"Bearer {key}"}, timeout=40)
+    if resp.status_code != 200:
+        raise ValueError(f"CollegeBasketballData {path}: HTTP {resp.status_code} {resp.text[:120]!r}")
+    return resp.json()
+
+
+@st.cache_data(ttl=7 * 24 * 3600, show_spinner=False)
+def _cbbd_teams(season, key):
+    """{CBBD team id: ESPN team id} for D1 teams."""
+    return {t["id"]: str(t["sourceId"]) for t in _cbbd_get(f"teams?season={season}", key)
+            if t.get("sourceId")}
+
+
+@st.cache_data(ttl=12 * 3600, show_spinner=False)
+def _cbbd_frame(season, key):
+    espn = _cbbd_teams(season, key)
+    ratings = {r["teamId"]: r for r in _cbbd_get(f"ratings/adjusted?season={season}", key)}
+    rows = []
+    for r in _cbbd_get(f"stats/team/season?season={season}", key):
+        tid = r.get("teamId")
+        if tid not in espn or tid not in ratings:
+            continue   # non-D1 opponents carry no ESPN D1 id or adjusted rating
+        t, o = r.get("teamStats") or {}, r.get("opponentStats") or {}
+        tf, of_ = t.get("fourFactors") or {}, o.get("fourFactors") or {}
+        fga = (t.get("fieldGoals") or {}).get("attempted") or 0
+        three_a = (t.get("threePointFieldGoals") or {}).get("attempted") or 0
+        rows.append({
+            "team": r.get("team"), "espn_id": espn[tid], "conf": r.get("conference"),
+            "record": f"{r.get('wins', 0)}-{r.get('losses', 0)}",
+            "adjoe": ratings[tid].get("offensiveRating"), "adjde": ratings[tid].get("defensiveRating"),
+            "adjt": r.get("pace"),
+            "efg": tf.get("effectiveFieldGoalPct"),
+            "ftr": tf.get("freeThrowRate"), "ftr_d": of_.get("freeThrowRate"),
+            "orb": tf.get("offensiveReboundPct"), "orb_allowed": of_.get("offensiveReboundPct"),
+            # turnoverRatio is per possession (0.19); Torvik-style TO% is a percent
+            "to": None if tf.get("turnoverRatio") is None else tf["turnoverRatio"] * 100,
+            "to_forced": None if of_.get("turnoverRatio") is None else of_["turnoverRatio"] * 100,
+            "three_rate": three_a / fga * 100 if fga else None,
+            "ft_pct": (t.get("freeThrows") or {}).get("pct"),
+        })
+    return pd.DataFrame(rows)
+
+
+STATS_SOURCES = {"cbbd": "CollegeBasketballData.com", "torvik": "Bart Torvik"}
+
+
+def load_team_stats(season):
+    """(stats_df, source_key). CollegeBasketballData.com when a key is set,
+    otherwise (or if it fails) Bart Torvik. Empty frame if neither loads;
+    STATS_LAST_ERROR says why."""
+    errors = []
+    key = _cbbd_key()
+    if key:
+        try:
+            df = _cbbd_frame(season, key)
+            if len(df) >= 300 and _plausible(df, tolerance=0.05):
+                df["key"] = df["team"].map(_norm)
+                STATS_LAST_ERROR["msg"] = None
+                return df.drop_duplicates("espn_id").set_index("key"), "cbbd"
+            errors.append(f"CollegeBasketballData failed sanity checks ({len(df)} teams)")
+        except Exception as e:
+            errors.append(str(e)[:200])
+    else:
+        errors.append("no CBBD_API_KEY set")
+    tv = load_torvik(season)
+    if not tv.empty:
+        STATS_LAST_ERROR["msg"] = None
+        return tv, "torvik"
+    errors.append(f"Torvik: {TORVIK_LAST_ERROR['msg']}")
+    STATS_LAST_ERROR["msg"] = "; ".join(errors)
+    return pd.DataFrame(), None
+
+
+STATS_LAST_ERROR = {"msg": None}
+
+
+def team_row(tv, g, side):
+    """A team's stats row: exact ESPN id when the source has it, else by name."""
+    if tv.empty:
+        return None
+    if "espn_id" in tv.columns:
+        hit = tv[tv["espn_id"] == str(g[f"{side}_id"])]
+        if not hit.empty:
+            return hit.iloc[0]
+    return torvik_row(tv, g[f"{side}_loc"], g[f"{side}_short"])
 
 
 def torvik_row(tv, location, short):
@@ -223,7 +331,7 @@ def score_side(side, g, tv_rows, tv_proj, machine_wp, ctx, tv, game_day):
     implied = american_to_implied_prob(ml)
     wp = None if tv_proj is None else (tv_proj["home_wp"] if side == "home" else 1 - tv_proj["home_wp"])
     if wp is None:
-        checks.append(_check("Model value", None, "No Torvik rating for one of the teams"))
+        checks.append(_check("Model value", None, "No efficiency rating for one of the teams"))
         value = None
     else:
         value = 100 * (wp - implied)
@@ -261,7 +369,7 @@ def score_side(side, g, tv_rows, tv_proj, machine_wp, ctx, tv, game_day):
 
     if me is None or opp is None:
         for n in ("Free throws", "Rebounding", "Guards / turnovers", "Shooting profile"):
-            checks.append(_check(n, None, "No Torvik stats for one of the teams"))
+            checks.append(_check(n, None, "No team stats for one of the teams"))
     else:
         # 6. Free throws: FTs made per 100 FGA = FT rate x FT%
         my_ft, op_ft = me["ftr"] * me["ft_pct"] / 100, opp["ftr"] * opp["ft_pct"] / 100
@@ -290,7 +398,7 @@ def score_side(side, g, tv_rows, tv_proj, machine_wp, ctx, tv, game_day):
                 "enough variance to pull the upset" if passed else "not enough 3PT variance")
         checks.append(_check("Shooting profile", passed, why))
 
-    # 10. Ratings lag: Torvik leans on preseason priors until mid-December
+    # 10. Ratings lag: efficiency ratings are noisy / prior-driven until mid-December
     m, d = RULES["ratings_settle"]
     settled = game_day.month < 8 or (game_day.month, game_day.day) >= (m, d)
     if settled:
@@ -319,8 +427,7 @@ def evaluate_day(day_games, season_games, tv, ratings, model):
         if g["completed"] or g["state"] != "pre":
             continue   # only games that haven't tipped: in-game prices aren't pregame lines
         game_day = _et_date(g["date"])
-        rows = {"home": torvik_row(tv, g["home_loc"], g["home_short"]),
-                "away": torvik_row(tv, g["away_loc"], g["away_short"])}
+        rows = {"home": team_row(tv, g, "home"), "away": team_row(tv, g, "away")}
         proj = (torvik_projection(rows["home"], rows["away"], g["neutral"], tv)
                 if rows["home"] is not None and rows["away"] is not None else None)
         mp = cd.project(g, ratings, model) if ratings is not None and not ratings.empty else None
@@ -340,13 +447,13 @@ def is_play(pick, require_core, need=None):
 
 # ---- View ------------------------------------------------------------------
 def render_value(season_games, ratings, model):
-    st.caption("Scores both sides of every game on your 10-point moneyline checklist. "
-               "Lines: DraftKings via ESPN. Stats: Bart Torvik. Read-only analytics.")
-    tv = load_torvik(cd.season_for())
+    tv, source = load_team_stats(cd.season_for())
     if tv.empty:
-        st.info("Torvik stats aren't reachable right now, so games can't be scored. Nothing is shown "
-                "rather than guessed numbers.")
+        st.info("Team stats aren't reachable right now (CollegeBasketballData.com or Bart Torvik), "
+                "so games can't be scored. Nothing is shown rather than guessed numbers.")
         return
+    st.caption("Scores both sides of every game on your 10-point moneyline checklist. "
+               f"Lines: DraftKings via ESPN. Stats: {STATS_SOURCES[source]}. Read-only analytics.")
 
     c = st.columns(3)
     day = c[0].date_input("Games on", value=datetime.now(cd.ET).date(), key="cbbv_day")
@@ -412,7 +519,7 @@ def render_value(season_games, ratings, model):
             if g["neutral"]:
                 st.caption("⚠️ Neutral site. Check it isn't near one team's campus.")
             if not r["matched"]:
-                st.caption("One team isn't in Torvik's D1 list, so stat checks are skipped.")
+                st.caption("One team isn't in the D1 stats list, so stat checks are skipped.")
             for ch in p["checks"]:
                 icon = "✅" if ch["passed"] is True else "❌" if ch["passed"] is False else "➖"
                 st.markdown(f"{icon} **{ch['name']}**: {ch['detail']}")
@@ -429,7 +536,7 @@ def checklist_rows():
     return [
         ("Price lane", f"Moneyline between {fmt_odds(lo)} and {fmt_odds(hi)}, or {fmt_odds(dlo)} and {fmt_odds(dhi)}"),
         ("Model value", f"Model win % beats the book's implied win % by {RULES['min_value_pts']:g}+ points "
-                        "(Bart Torvik efficiency and tempo)"),
+                        "(adjusted offensive/defensive efficiency and pace)"),
         ("Roster continuity", "Returning minutes. Not scored yet: no free data source"),
         ("Schedule / fatigue", f"Opponent on a back-to-back or 3rd game in 4 days while we're not, or "
                                f"{RULES['rest_edge_days']}+ more days of rest"),
@@ -451,4 +558,5 @@ def render_checklist(need=None):
         f"| {i} | **{name}** | {rule} |" for i, (name, rule) in enumerate(rows, 1)))
     st.markdown(f"**A game qualifies for the MACHINE MODEL when {need}+ checks pass, including "
                 "the price lane and model value.** Neutral sites are flagged for a closer look but "
-                "not scored. Stats: Bart Torvik. Lines: DraftKings via ESPN.")
+                "not scored. Stats: CollegeBasketballData.com (Bart Torvik as backup). "
+                "Lines: DraftKings via ESPN.")
