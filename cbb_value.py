@@ -107,6 +107,19 @@ def _plausible(df):
     return True
 
 
+TORVIK_LAST_ERROR = {"msg": None}   # why the last load failed, for the daily job's log
+
+
+def _torvik_text(path):
+    resp = requests.get(f"{TORVIK}/{path}", timeout=30)
+    body = resp.text
+    if resp.status_code != 200 or body.lstrip().startswith("<"):
+        snippet = " ".join(body[:160].split())
+        raise ValueError(f"{path}: HTTP {resp.status_code}, "
+                         f"{resp.headers.get('content-type', '?')}: {snippet!r}")
+    return body
+
+
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
 def load_torvik(season):
     """One row per D1 team with efficiency + four factors, or empty on failure.
@@ -114,20 +127,24 @@ def load_torvik(season):
     fffinal.csv's "DR%" is the offensive-rebound rate a team ALLOWS (lower is
     better: Torvik ranks it ascending), and "TO% Def." is the turnover rate it
     FORCES."""
+    TORVIK_LAST_ERROR["msg"] = None
     try:
-        res = _read_torvik_csv(requests.get(f"{TORVIK}/{season}_team_results.csv", timeout=30).text)
-        ff = _read_torvik_csv(requests.get(f"{TORVIK}/{season}_fffinal.csv", timeout=30).text)
-    except Exception:
+        res = _read_torvik_csv(_torvik_text(f"{season}_team_results.csv"))
+        ff = _read_torvik_csv(_torvik_text(f"{season}_fffinal.csv"))
+    except Exception as e:
+        TORVIK_LAST_ERROR["msg"] = str(e)[:300]
         return pd.DataFrame()
     need_res = ["team", "conf", "record", "adjoe", "adjde", "barthag", "adjt"]
     need_ff = ["TeamName", "eFG%", "FTR", "FTR Def", "OR%", "DR%", "TO%", "TO% Def.", "3P rate", "ft%"]
     if any(c not in res.columns for c in need_res) or any(c not in ff.columns for c in need_ff):
+        TORVIK_LAST_ERROR["msg"] = "Torvik CSV columns changed"
         return pd.DataFrame()   # Torvik changed its format: show nothing rather than misread it
     ff = ff[need_ff].rename(columns={
         "TeamName": "team", "eFG%": "efg", "FTR": "ftr", "FTR Def": "ftr_d", "OR%": "orb",
         "DR%": "orb_allowed", "TO%": "to", "TO% Def.": "to_forced", "3P rate": "three_rate", "ft%": "ft_pct"})
     df = res[need_res].merge(ff, on="team", how="inner")
     if len(df) < 300 or not _plausible(df):
+        TORVIK_LAST_ERROR["msg"] = f"Torvik data failed sanity checks ({len(df)} teams)"
         return pd.DataFrame()
     df["key"] = df["team"].map(_norm)
     return df.drop_duplicates("key").set_index("key")

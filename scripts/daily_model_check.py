@@ -37,13 +37,13 @@ def main():
 
     season = cd.season_for(today)
     games, failed = cd.load_season(season)
-    if games.empty:
-        print("ESPN scoreboard unavailable; nothing scored.")
     tv = cv.load_torvik(season)
-    if tv.empty:
-        print("Torvik stats unavailable; nothing scored.")
-
     problems = []
+    if games.empty:
+        problems.append("ESPN scoreboard unavailable, so nothing was scored")
+    if tv.empty:
+        problems.append(f"Torvik stats unavailable, so nothing was scored: {cv.TORVIK_LAST_ERROR['msg']}")
+
     if not games.empty and not tv.empty:
         ratings, model = cd.fit_ratings(games)
         events, _ = cd.fetch_events([today])
