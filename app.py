@@ -27,6 +27,7 @@ from bet_analytics import render_bet_history_section
 import content_engine
 import post_studio
 import cbb_tab
+import real_bets
 
 st.set_page_config(
     page_title="FADE MACHINE | NFL Analytics",
@@ -2167,9 +2168,11 @@ if tab_profile.open:
             current = get_current_profile()
             st.success(f"Logged in as **{display_name}**")
             st.metric("Steel Balance", steel_balance)
-            sub_account, sub_bank, sub_buy, sub_history = st.tabs(
-                ["Account", "Bet Bank", "Buy Steel", "Transaction History"]
+            sub_account, sub_bank, sub_real, sub_buy, sub_history = st.tabs(
+                ["Account", "Bet Bank", "💵 Real Bets", "Buy Steel", "Transaction History"]
             )
+            with sub_real:
+                real_bets.render_real_bets()
             with sub_bank:
                 render_bet_history_section(
                     st.session_state.username,
