@@ -289,30 +289,6 @@ def _metrics(rec):
     m[3].metric("Pending", rec["pending"])
 
 
-def _rows(df, bet, with_rank=False):
-    rows = []
-    for r in df.to_dict("records"):
-        score = ("" if r.get("home_score") is None or pd.isna(r.get("home_score")) else
-                 f"{int(r['away_score'])}-{int(r['home_score'])}")
-        row = {"Date": r["game_date"].strftime("%b %-d")}
-        if with_rank:
-            row["#"] = int(r["rank"])
-        row.update({
-            "Pick": f"{r['team']} {fmt_odds(int(r['ml']))}",
-            "Matchup": f"{r['away']} {'vs' if r.get('neutral') else '@'} {r['home']}",
-            "Model %": None if r.get("model_wp") is None else round(100 * float(r["model_wp"]), 1),
-            "Value": None if r.get("value_pts") is None else round(float(r["value_pts"]), 1),
-            "Checks": f"{r['checks_passed']}/{r['checks_scored']}",
-            "Result": ICON.get(r["status"], r["status"]),
-            "Score": score,
-            "Units": round(r["units"], 2) if r["status"] != "pending" else None,
-        })
-        if bet:
-            row["You bet it"] = "💵" if (r["game_date"], str(r["team"]).lower()) in bet else ""
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
 def _load_or_explain(table, sql_file):
     df, err = load_table(table)
     if err == "no_supabase":
@@ -328,13 +304,129 @@ def _load_or_explain(table, sql_file):
     return None
 
 
+# ---- Pick cards: 1 unit each, a "why" sentence and a recap ----------------
+# Each phrase is what a passed check says about the matchup. Built only from
+# the checks saved when the pick was made, so nothing is invented later.
+CHECK_PHRASES = {
+    "Schedule / fatigue": "a rest edge",
+    "Motivation": "an opponent letdown spot",
+    "Free throws": "a free-throw edge",
+    "Rebounding": "a rebounding edge",
+    "Guards / turnovers": "a turnover edge",
+    "Ratings lag": "season-only ratings agreeing",
+}
+
+
+def _checks(r):
+    checks = r.get("checks") or []
+    if isinstance(checks, str):
+        try:
+            checks = json.loads(checks)
+        except ValueError:
+            checks = []
+    return checks
+
+
+def _join(items):
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _to_win(ml):
+    return ml / 100 if ml > 0 else 100 / abs(ml)
+
+
+def reason_sentence(r):
+    """One sentence on why the model picked this side, from the saved numbers."""
+    ml, team = int(r["ml"]), r["team"]
+    implied = 100 / (ml + 100) if ml > 0 else abs(ml) / (abs(ml) + 100)
+    phrases = []
+    for c in _checks(r):
+        if c.get("passed") is not True:
+            continue
+        name = c.get("name")
+        if name == "Shooting profile":
+            phrases.append("steadier inside scoring" if ml < 0 else "3-point variance for the upset")
+        elif name in CHECK_PHRASES:
+            phrases.append(CHECK_PHRASES[name])
+    backed = f", backed by {_join(phrases)}" if phrases else ""
+    if r.get("model_wp") is None or pd.isna(r.get("model_wp")):
+        return (f"{team} at {fmt_odds(ml)} passed {r['checks_passed']} of {r['checks_scored']} "
+                f"checks{backed}.")
+    wp = float(r["model_wp"]) * 100
+    fair = f" (fair {fmt_odds(int(r['fair_ml']))})" if r.get("fair_ml") is not None and not pd.isna(r.get("fair_ml")) else ""
+    value = r.get("value_pts")
+    edge = f", a {float(value):+.1f}-point edge" if value is not None and not pd.isna(value) else ""
+    return (f"The model makes {team} a {wp:.1f}% winner{fair} against a {fmt_odds(ml)} price "
+            f"that implies {implied * 100:.1f}%{edge}{backed}.")
+
+
+def recap_sentence(r):
+    """One-sentence recap of a finished game, from the final score. None until graded."""
+    status = r["status"]
+    if status == "pending":
+        return None
+    if status == "void":
+        return "The game was postponed or cancelled, so the play is void and no units moved."
+    if r.get("home_score") is None or pd.isna(r.get("home_score")):
+        return None
+    home = r["side"] == "home"
+    mine, theirs = ((int(r["home_score"]), int(r["away_score"])) if home
+                    else (int(r["away_score"]), int(r["home_score"])))
+    opp = r["away"] if home else r["home"]
+    ml = int(r["ml"])
+    role = "favourite" if ml < 0 else "underdog"
+    wp = ("" if r.get("model_wp") is None or pd.isna(r.get("model_wp"))
+          else f" (the model gave them {float(r['model_wp']) * 100:.0f}%)")
+    if status == "won":
+        return (f"{r['team']} beat {opp} {mine}-{theirs} as a {fmt_odds(ml)} {role}{wp}, "
+                f"so the 1-unit play won {_to_win(ml):+.2f} units.")
+    if status == "lost":
+        return (f"{r['team']} lost {mine}-{theirs} to {opp} as a {fmt_odds(ml)} {role}{wp}, "
+                f"so the 1-unit play lost 1.00 unit.")
+    return f"{r['team']} and {opp} finished level {mine}-{theirs}, so the play pushed and no units moved."
+
+
+def _card_label(r, bet, with_rank):
+    icon = {"won": "✅", "lost": "❌", "push": "➖", "void": "⚪", "pending": "⏳"}.get(r["status"], "")
+    rank = f"#{int(r['rank'])} " if with_rank and r.get("rank") is not None else ""
+    ml = int(r["ml"])
+    if r["status"] == "pending":
+        money = f"1u to win {_to_win(ml):.2f}u"
+    else:
+        money = f"{r['units']:+.2f}u"
+    you = " 💵" if bet and (r["game_date"], str(r["team"]).lower()) in bet else ""
+    return f"{icon} {rank}{r['game_date']:%b %-d} · {r['team']} {fmt_odds(ml)} · {money}{you}"
+
+
+def render_pick_cards(df, bet, with_rank=False, limit=None):
+    """One dropdown per pick: the 1-unit stake, why the model picked it and,
+    once final, a one-sentence recap."""
+    rows = df.to_dict("records")
+    for r in rows[:limit] if limit else rows:
+        with st.expander(_card_label(r, bet, with_rank)):
+            st.markdown(f"**Why the model picked it:** {reason_sentence(r)}")
+            recap = recap_sentence(r)
+            if recap:
+                st.markdown(f"**Recap:** {recap}")
+            matchup = f"{r['away']} {'vs' if r.get('neutral') else '@'} {r['home']}"
+            tip = r["tip_time"].tz_convert(cd.ET).strftime("%-I:%M %p ET") if pd.notna(r.get("tip_time")) else ""
+            st.caption(f"{matchup} · {tip} · Stake 1 unit at {fmt_odds(int(r['ml']))} · "
+                       f"{r['checks_passed']}/{r['checks_scored']} checks")
+            checks = _checks(r)
+            if checks:
+                st.caption("  ".join(
+                    f"{'✅' if c.get('passed') is True else '❌' if c.get('passed') is False else '➖'} {c.get('name')}"
+                    for c in checks))
+
+
 def render_board():
     bet = _bet_keys()
 
     st.markdown("### 🎯 MACHINE Top 3")
     st.caption(f"Every day at {TOP3_LOCK_HOUR} AM ET the MACHINE MODEL locks in its 3 best-edge "
-               "games (in a price lane with model value, ranked by checks passed, then value) "
-               "and bets 1 unit on each. The picks never change after that.")
+               "games (in a price lane with model value, ranked by checks passed, then value). "
+               "Every pick is a 1-unit bet at the locked price and never changes. "
+               "Tap a pick for why the model chose it and, once it's final, a recap.")
     top = _load_or_explain("machine_top3", "db/machine_top3.sql")
     if top is not None:
         if top.empty:
@@ -342,11 +434,18 @@ def render_board():
         else:
             top, rec = _record(top)
             _metrics(rec)
+            top = top.sort_values(["game_date", "rank"], ascending=[False, True])
             today = datetime.now(cd.ET).date()
-            todays = top[top["game_date"] == today].sort_values("rank")
+            todays = top[top["game_date"] == today]
             if not todays.empty:
-                st.markdown("**Today's Top 3**")
-                st.dataframe(_rows(todays, bet, with_rank=True), hide_index=True, width="stretch")
+                st.markdown("**Today's picks**")
+                render_pick_cards(todays, bet, with_rank=True)
+            earlier = top[top["game_date"] != today]
+            if not earlier.empty:
+                st.markdown("**Previous picks**")
+                show_all = len(earlier) > 15 and st.checkbox(
+                    f"Show all {len(earlier)} previous picks", key="top3_all")
+                render_pick_cards(earlier, bet, with_rank=True, limit=None if show_all else 15)
             by_day = top.groupby("game_date").agg(
                 Picks=("id", "count"), Won=("status", lambda s: (s == "won").sum()),
                 Lost=("status", lambda s: (s == "lost").sum()), Units=("units", "sum"))
@@ -356,13 +455,9 @@ def render_board():
             by_day.index = [d.strftime("%b %-d") for d in by_day.index]
             with st.expander("Day by day"):
                 st.dataframe(by_day.iloc[::-1], width="stretch")
-            with st.expander("Every Top 3 pick"):
-                st.dataframe(_rows(top.sort_values(["game_date", "rank"], ascending=[False, True]),
-                                   bet, with_rank=True), hide_index=True, width="stretch")
 
     st.markdown("### 📋 Every checklist play")
-    st.caption("Every game that met the checklist, logged at the price the model found it. "
-               "Flat 1 unit per play.")
+    st.caption("Every game that met the checklist, as a 1-unit bet at the price the model found it.")
     board = _load_or_explain("model_plays", "db/model_plays.sql")
     if board is None:
         return
@@ -371,17 +466,7 @@ def render_board():
         return
     board, rec = _record(board)
     _metrics(rec)
-    st.dataframe(_rows(board, bet), hide_index=True, width="stretch")
+    show_all = len(board) > 20 and st.checkbox(f"Show all {len(board)} plays", key="plays_all")
+    render_pick_cards(board, bet, limit=None if show_all else 20)
     if not auth_store.signed_in():
-        st.caption("Sign in and import your Juice Reel bets (Profile → Real Bets) to see which picks you bet.")
-
-    with st.expander("Why each play qualified"):
-        for r in board.head(30).to_dict("records"):
-            st.markdown(f"**{r['game_date']:%b %-d} · {r['team']} {fmt_odds(int(r['ml']))}** "
-                        f"({r['checks_passed']}/{r['checks_scored']})")
-            checks = r.get("checks") or []
-            if isinstance(checks, str):
-                checks = json.loads(checks)
-            st.markdown("\n".join(
-                f"- {'✅' if c.get('passed') is True else '❌' if c.get('passed') is False else '➖'} "
-                f"{c.get('name')}: {c.get('detail')}" for c in checks))
+        st.caption("Sign in and import your Juice Reel bets (Profile → Real Bets) to see which picks you bet (💵).")
