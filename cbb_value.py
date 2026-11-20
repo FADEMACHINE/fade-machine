@@ -290,15 +290,19 @@ def _et_date(ts):
 
 
 def schedule_context(season_games, team_id, game_day):
-    """Rest days, back-to-back / 3-in-4, and letdown spot for one team."""
+    """Rest days, back-to-back / 3-in-4, and letdown spot for one team.
+    Uses the et_date column parse_events computes once, instead of converting
+    every game's timestamp again for each team."""
     if season_games is None or season_games.empty:
         return None
-    mine = season_games[((season_games["home_id"] == team_id) | (season_games["away_id"] == team_id))
-                        & season_games["completed"]]
-    mine = mine[mine["date"].map(_et_date) < game_day]
+    sg = season_games
+    if "et_date" not in sg.columns:
+        sg = sg.assign(et_date=sg["date"].dt.tz_convert(cd.ET).dt.date)
+    mine = sg[((sg["home_id"] == team_id) | (sg["away_id"] == team_id))
+              & sg["completed"] & (sg["et_date"] < game_day)]
     if mine.empty:
         return {"rest": None, "b2b": False, "three_in_four": False, "letdown": False, "last": None}
-    days = mine["date"].map(_et_date)
+    days = mine["et_date"]
     rest = (game_day - days.max()).days
     recent = int((days >= game_day - timedelta(days=3)).sum())
     last = mine.iloc[-1]
@@ -313,8 +317,12 @@ def schedule_context(season_games, team_id, game_day):
 
 # ---- Checklist -------------------------------------------------------------
 def _check(name, passed, detail):
-    """passed: True / False, or None when there's no data to judge."""
-    return {"name": name, "passed": passed, "detail": detail}
+    """passed: True / False, or None when there's no data to judge.
+
+    Coerced to a plain bool: comparisons on pandas/numpy stats give numpy
+    booleans, which fail `is True` / `is False`, so the four-factor checks
+    were silently never counted (and showed as "no data")."""
+    return {"name": name, "passed": None if passed is None else bool(passed), "detail": detail}
 
 
 def score_side(side, g, tv_rows, tv_proj, machine_wp, ctx, tv, game_day):

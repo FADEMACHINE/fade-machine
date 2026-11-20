@@ -213,24 +213,33 @@ def render_cbb_tab():
                    "average on purpose. Treat edges as a watchlist until teams have 8-10 games.")
     ratings = _with_flags(ratings)
 
+    # on_change="rerun" + .open: only the section being viewed is built on each
+    # rerun, instead of all six (same pattern as the app's top-level tabs).
     board, value, model_board, power, team, march = st.tabs(
-        ["📅 Board", "💰 CBB Value", "📋 Machine Model", "📊 Power Ratings", "🔎 Team", "🏆 March Madness"])
-    with board:
-        _board(games, ratings, model)
-    with value:
-        cbb_value.render_value(games, ratings, model)
-    with model_board:
-        st.markdown("### ✅ The MACHINE MODEL checklist")
-        cbb_value.render_checklist()
-        st.divider()
-        if auth_store.is_admin():
-            days, source = cbb_value.lookahead(games, ratings, model)
-            cbb_board.render_lookahead(days, cbb_value.STATS_SOURCES.get(source))
+        ["📅 Board", "💰 CBB Value", "📋 Machine Model", "📊 Power Ratings", "🔎 Team", "🏆 March Madness"],
+        key="cbb_sections", on_change="rerun")
+    if board.open:
+        with board:
+            _board(games, ratings, model)
+    if value.open:
+        with value:
+            cbb_value.render_value(games, ratings, model)
+    if model_board.open:
+        with model_board:
+            st.markdown("### ✅ The MACHINE MODEL checklist")
+            cbb_value.render_checklist()
             st.divider()
-        cbb_board.render_board()
-    with power:
-        _ratings(ratings)
-    with team:
-        _team(games, ratings)
-    with march:
-        _march(games, ratings, model)
+            if auth_store.is_admin():
+                days, source = cbb_value.lookahead(games, ratings, model)
+                cbb_board.render_lookahead(days, cbb_value.STATS_SOURCES.get(source))
+                st.divider()
+            cbb_board.render_board()
+    if power.open:
+        with power:
+            _ratings(ratings)
+    if team.open:
+        with team:
+            _team(games, ratings)
+    if march.open:
+        with march:
+            _march(games, ratings, model)

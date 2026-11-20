@@ -220,6 +220,7 @@ def render_real_bets():
                     st.session_state["rb_legs"] = legs
                 else:
                     st.success(f"Saved {n:,} bet legs to your account.")
+                    st.session_state.pop("_bet_keys_cache", None)   # refresh the Machine Model's 💵 markers
                     st.session_state.pop("rb_legs", None)
             else:
                 st.session_state["rb_legs"] = legs

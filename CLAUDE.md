@@ -50,11 +50,11 @@ and never hard-code a fallback key.
 | `bet_slips.py` | Groups repeat bets into slips; the My Bets tab |
 | `bet_analytics.py` | Bet history and trend charts on the Profile tab |
 | `content_engine.py` | Headlines, leaderboards and movers derived from the data |
-| `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model |
+| `cbb_data.py` | College basketball: ESPN scoreboard fetch (no key, no Odds API credits) and the MACHINE ratings model (normal equations summed directly, cached 30 min; never build the full design matrix) |
 | `cbb_edges.py` | Editable list of CBB edges flagged on the ratings and March Madness cheat sheet |
 | `cbb_value.py` | CBB Value: scores the owner's moneyline checklist (docs/cbb-moneyline-handoff.md) with CollegeBasketballData.com stats (Torvik as backup; Torvik blocks GitHub's servers) + ESPN lines; thresholds in `RULES` |
 | `cbb_board.py` | Machine Model page: logs every CBB Value PLAY (`model_plays`) and the daily MACHINE Top 3 (`machine_top3`), both locked at the price found and graded from ESPN finals |
-| `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness |
+| `cbb_tab.py` | College Hoops tab: board, power ratings, team lookup, March Madness. Sections are lazy (`st.tabs(..., on_change="rerun")` + `.open`): only the open one is built |
 | `real_bets.py` | Profile → Real Bets: Juice Reel CSV import (no API exists) and real-money ROI analysis; Supabase table in `db/real_bets.sql` |
 | `post_studio.py` | Private `?studio=1` page: picks → X drafts, pick-card image, post |
 | `x_poster.py` | X API v2 posting (OAuth 1.0a) and image upload |

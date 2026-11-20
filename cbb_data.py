@@ -166,6 +166,7 @@ def parse_events(events):
         return df
     df = df.drop_duplicates("id")
     df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
+    df["et_date"] = df["date"].dt.tz_convert(ET).dt.date   # computed once, reused everywhere
     return df.sort_values("date").reset_index(drop=True)
 
 
@@ -178,12 +179,19 @@ def load_season(season):
 
 
 # ---- Model -----------------------------------------------------------------
+@st.cache_data(ttl=30 * 60, show_spinner=False, max_entries=4)
 def fit_ratings(games):
     """Ridge fit of points scored: pts = avg + off[team] - def[opp] ± hca/2.
 
     Returns (ratings_df, model) where model has avg points and home edge.
     A team's net rating is off + def = points better than an average D1 team
     on a neutral floor.
+
+    Each team-game is one observation touching three parameters (scorer's
+    offence, opponent's defence, home court), so the normal equations are
+    summed straight into a (2n+1)^2 matrix instead of materialising the full
+    design matrix, which would reach ~130 MB by March. Cached for 30 minutes
+    alongside the season data it's fitted to.
     """
     done = games[games["completed"] & games["home_score"].notna()] if not games.empty else games
     if done is None or done.empty:
@@ -191,80 +199,104 @@ def fit_ratings(games):
 
     ids = pd.unique(pd.concat([done["home_id"], done["away_id"]]))
     idx = {t: i for i, t in enumerate(ids)}
-    n = len(ids)
-    # params: off[0..n), def[n..2n), hca
-    rows, y = [], []
-    for g in done.itertuples():
-        h, a = idx[g.home_id], idx[g.away_id]
-        site = 0.0 if g.neutral else 0.5
-        r = np.zeros(2 * n + 1); r[h] = 1; r[n + a] = -1; r[-1] = site
-        rows.append(r); y.append(g.home_score)
-        r = np.zeros(2 * n + 1); r[a] = 1; r[n + h] = -1; r[-1] = -site
-        rows.append(r); y.append(g.away_score)
-    X, y = np.array(rows), np.array(y)
+    n, p = len(ids), 2 * len(ids) + 1
+    h = done["home_id"].map(idx).to_numpy()
+    a = done["away_id"].map(idx).to_numpy()
+    site = np.where(done["neutral"].to_numpy(dtype=bool), 0.0, 0.5)
+    # Two observations per game: home scoring vs away defence, and vice versa.
+    off_i = np.concatenate([h, a])                 # scorer's offence column
+    def_i = np.concatenate([a, h]) + n             # opponent's defence column
+    s = np.concatenate([site, -site])              # home-court column
+    y = np.concatenate([done["home_score"].to_numpy(float), done["away_score"].to_numpy(float)])
     avg = y.mean()
-    reg = np.full(2 * n + 1, RIDGE); reg[-1] = 0.01
-    beta = np.linalg.solve(X.T @ X + np.diag(reg), X.T @ (y - avg))
+    yc = y - avg
+
+    xtx = np.zeros((p, p))
+    np.add.at(xtx, (off_i, off_i), 1.0)
+    np.add.at(xtx, (def_i, def_i), 1.0)
+    np.add.at(xtx, (off_i, def_i), -1.0)
+    np.add.at(xtx, (def_i, off_i), -1.0)
+    np.add.at(xtx, (off_i, p - 1), s)
+    np.add.at(xtx, (p - 1, off_i), s)
+    np.add.at(xtx, (def_i, p - 1), -s)
+    np.add.at(xtx, (p - 1, def_i), -s)
+    xtx[p - 1, p - 1] += float((s * s).sum())
+    xty = np.zeros(p)
+    np.add.at(xty, off_i, yc)
+    np.add.at(xty, def_i, -yc)
+    xty[p - 1] = float((s * yc).sum())
+
+    reg = np.full(p, RIDGE); reg[-1] = 0.01
+    beta = np.linalg.solve(xtx + np.diag(reg), xty)
     off, dfn, hca = beta[:n], beta[n:2 * n], beta[-1]
 
-    names = {}
-    for g in done.itertuples():
-        names[g.home_id] = g.home
-        names[g.away_id] = g.away
+    names = dict(zip(done["home_id"], done["home"])) | dict(zip(done["away_id"], done["away"]))
     rat = pd.DataFrame({"team_id": ids, "team": [names[t] for t in ids],
                         "off": off, "def": dfn})
     rat["net"] = rat["off"] + rat["def"]
     rat = rat.merge(team_records(done, rat), on="team_id", how="left")
     rat["rank"] = rat["net"].rank(ascending=False, method="min").astype(int)
-    return rat.sort_values("net", ascending=False).reset_index(drop=True), {"avg": avg, "hca": hca}
+    rat = rat.sort_values("net", ascending=False).reset_index(drop=True)
+    # Plain lookup for project(), so it doesn't re-index the frame per game.
+    by_id = {t: (float(o), float(d), int(gm)) for t, o, d, gm
+             in zip(rat["team_id"], rat["off"], rat["def"], rat["games"])}
+    return rat, {"avg": float(avg), "hca": float(hca), "by_id": by_id}
 
 
 def team_records(done, rat):
-    """W-L, ATS, O/U, close games, last 10 and strength of schedule per team."""
+    """W-L, ATS, O/U, close games, last 10 and strength of schedule per team.
+
+    Built in one vectorised pass (one row per team-game, then a single
+    groupby) rather than a Python function per team.
+    """
     net = dict(zip(rat["team_id"], rat["off"] + rat["def"]))
-    long = []
-    for g in done.itertuples():
-        for side in ("home", "away"):
-            other = "away" if side == "home" else "home"
-            pts, opp = getattr(g, f"{side}_score"), getattr(g, f"{other}_score")
-            spread = None
-            if g.home_spread is not None and not pd.isna(g.home_spread):
-                spread = g.home_spread if side == "home" else -g.home_spread
-            ats = None
-            if spread is not None:
-                m = pts - opp + spread
-                ats = "W" if m > 0 else "L" if m < 0 else "P"
-            ou = None
-            if g.total_line is not None and not pd.isna(g.total_line):
-                t = pts + opp
-                ou = "O" if t > g.total_line else "U" if t < g.total_line else "P"
-            long.append({"team_id": getattr(g, f"{side}_id"), "date": g.date,
-                         "win": pts > opp, "margin": pts - opp, "ats": ats, "ou": ou,
-                         "fav": spread is not None and spread < 0,
-                         "opp_net": net.get(getattr(g, f"{other}_id"), 0.0)})
-    L = pd.DataFrame(long).sort_values("date")
+    hs, as_ = done["home_score"].to_numpy(float), done["away_score"].to_numpy(float)
+    spread_h = pd.to_numeric(done["home_spread"], errors="coerce").to_numpy(float)
+    total = pd.to_numeric(done["total_line"], errors="coerce").to_numpy(float)
+    L = pd.DataFrame({
+        "team_id": np.concatenate([done["home_id"].to_numpy(), done["away_id"].to_numpy()]),
+        "opp_id": np.concatenate([done["away_id"].to_numpy(), done["home_id"].to_numpy()]),
+        "date": np.concatenate([done["date"].to_numpy(), done["date"].to_numpy()]),
+        "pts": np.concatenate([hs, as_]), "opp": np.concatenate([as_, hs]),
+        "spread": np.concatenate([spread_h, -spread_h]),
+        "total_line": np.concatenate([total, total]),
+    })
+    L["margin"] = L["pts"] - L["opp"]
+    L["win"] = L["pts"] > L["opp"]
+    ats_m = L["margin"] + L["spread"]                  # NaN when there's no line
+    L["ats_w"] = ats_m > 0
+    L["ats_l"] = ats_m < 0
+    L["ats_p"] = ats_m == 0
+    L["fav"] = L["spread"] < 0
+    tot = L["pts"] + L["opp"]
+    L["over"] = tot > L["total_line"]
+    L["under"] = tot < L["total_line"]
+    L["close"] = L["margin"].abs() <= 5
+    L["close_w"] = L["close"] & L["win"]
+    L["fav_ats_w"] = L["fav"] & L["ats_w"]
+    L["fav_ats_l"] = L["fav"] & L["ats_l"]
+    L["dog_ats_w"] = ~L["fav"] & L["ats_w"]
+    L["dog_ats_l"] = ~L["fav"] & L["ats_l"] & L["spread"].notna()
+    L["opp_net"] = L["opp_id"].map(net).fillna(0.0)
+    L = L.sort_values("date", kind="stable")
 
-    def summarise(grp):
-        last10 = grp.tail(10)
-        close = grp[grp["margin"].abs() <= 5]
-        ats = grp[grp["ats"].notna()]
-        fav = ats[ats["fav"]]
-        dog = ats[~ats["fav"]]
-        ou = grp[grp["ou"].notna()]
-        return pd.Series({
-            "games": len(grp), "wins": int(grp["win"].sum()), "losses": int((~grp["win"]).sum()),
-            "last10_w": int(last10["win"].sum()), "last10_n": len(last10),
-            "close_w": int(close["win"].sum()), "close_n": len(close),
-            "ats_w": int((ats["ats"] == "W").sum()), "ats_l": int((ats["ats"] == "L").sum()),
-            "ats_p": int((ats["ats"] == "P").sum()),
-            "fav_ats_w": int((fav["ats"] == "W").sum()), "fav_ats_l": int((fav["ats"] == "L").sum()),
-            "dog_ats_w": int((dog["ats"] == "W").sum()), "dog_ats_l": int((dog["ats"] == "L").sum()),
-            "over": int((ou["ou"] == "O").sum()), "under": int((ou["ou"] == "U").sum()),
-            "avg_margin": round(grp["margin"].mean(), 1),
-            "sos": round(grp["opp_net"].mean(), 1),
-        })
-
-    return L.groupby("team_id").apply(summarise, include_groups=False).reset_index()
+    g = L.groupby("team_id")
+    out = g.agg(games=("win", "size"), wins=("win", "sum"), close_n=("close", "sum"),
+                close_w=("close_w", "sum"), ats_w=("ats_w", "sum"), ats_l=("ats_l", "sum"),
+                ats_p=("ats_p", "sum"), fav_ats_w=("fav_ats_w", "sum"), fav_ats_l=("fav_ats_l", "sum"),
+                dog_ats_w=("dog_ats_w", "sum"), dog_ats_l=("dog_ats_l", "sum"),
+                over=("over", "sum"), under=("under", "sum"),
+                avg_margin=("margin", "mean"), sos=("opp_net", "mean"))
+    last10 = L.groupby("team_id").tail(10).groupby("team_id").agg(
+        last10_w=("win", "sum"), last10_n=("win", "size"))
+    out = out.join(last10)
+    out["losses"] = out["games"] - out["wins"]
+    ints = ["games", "wins", "losses", "last10_w", "last10_n", "close_w", "close_n", "ats_w",
+            "ats_l", "ats_p", "fav_ats_w", "fav_ats_l", "dog_ats_w", "dog_ats_l", "over", "under"]
+    out[ints] = out[ints].astype(int)
+    out["avg_margin"] = out["avg_margin"].round(1)
+    out["sos"] = out["sos"].round(1)
+    return out[ints[:5] + ints[5:] + ["avg_margin", "sos"]].reset_index()
 
 
 def win_prob(margin):
@@ -276,10 +308,15 @@ def project(game, ratings, model):
     team has no rating yet."""
     if ratings is None or ratings.empty or model is None:
         return None
-    r = ratings.set_index("team_id")
-    if game["home_id"] not in r.index or game["away_id"] not in r.index:
+    by_id = model.get("by_id")
+    if by_id is None:
+        r = ratings.set_index("team_id")
+        by_id = {t: (row["off"], row["def"], row["games"]) for t, row in r.iterrows()}
+    if game["home_id"] not in by_id or game["away_id"] not in by_id:
         return None
-    h, a = r.loc[game["home_id"]], r.loc[game["away_id"]]
+    (h_off, h_def, h_n), (a_off, a_def, a_n) = by_id[game["home_id"]], by_id[game["away_id"]]
+    h = {"off": h_off, "def": h_def, "games": h_n}
+    a = {"off": a_off, "def": a_def, "games": a_n}
     site = 0.0 if game["neutral"] else 0.5
     home_pts = model["avg"] + h["off"] - a["def"] + site * model["hca"]
     away_pts = model["avg"] + a["off"] - h["def"] - site * model["hca"]
