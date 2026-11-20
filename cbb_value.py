@@ -317,8 +317,12 @@ def schedule_context(season_games, team_id, game_day):
 
 # ---- Checklist -------------------------------------------------------------
 def _check(name, passed, detail):
-    """passed: True / False, or None when there's no data to judge."""
-    return {"name": name, "passed": passed, "detail": detail}
+    """passed: True / False, or None when there's no data to judge.
+
+    Coerced to a plain bool: comparisons on pandas/numpy stats give numpy
+    booleans, which fail `is True` / `is False`, so the four-factor checks
+    were silently never counted (and showed as "no data")."""
+    return {"name": name, "passed": None if passed is None else bool(passed), "detail": detail}
 
 
 def score_side(side, g, tv_rows, tv_proj, machine_wp, ctx, tv, game_day):

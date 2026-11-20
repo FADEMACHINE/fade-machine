@@ -347,7 +347,14 @@ def _checks(r):
             checks = json.loads(checks)
         except ValueError:
             checks = []
-    return checks
+    # Picks saved before the numpy-bool fix stored some results as "True"/"False" text.
+    fixed = []
+    for c in checks:
+        v = c.get("passed")
+        if isinstance(v, str):
+            v = {"true": True, "false": False}.get(v.strip().lower())
+        fixed.append({**c, "passed": v})
+    return fixed
 
 
 def _join(items):
