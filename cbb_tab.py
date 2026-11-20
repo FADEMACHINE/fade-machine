@@ -8,6 +8,8 @@ import pandas as pd
 import streamlit as st
 
 import cbb_data as cd
+import app_settings
+import auth_store
 import cbb_board
 import cbb_edges
 import cbb_value
@@ -187,6 +189,7 @@ def _march(games, r, model):
 
 # ---- Entry -----------------------------------------------------------------
 def render_cbb_tab():
+    app_settings.apply()   # admin Master Settings drive the checklist, Top 3 and lookahead
     season = cd.season_for()
     with st.spinner("Loading the college basketball season…"):
         games, failed = cd.load_season(season)
@@ -220,6 +223,10 @@ def render_cbb_tab():
         st.markdown("### ✅ The MACHINE MODEL checklist")
         cbb_value.render_checklist()
         st.divider()
+        if auth_store.is_admin():
+            days, source = cbb_value.lookahead(games, ratings, model)
+            cbb_board.render_lookahead(days, cbb_value.STATS_SOURCES.get(source))
+            st.divider()
         cbb_board.render_board()
     with power:
         _ratings(ratings)

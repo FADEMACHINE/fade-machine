@@ -35,6 +35,11 @@ def main():
     client = create_client(url, key)
     cbb_board._client = lambda: client
 
+    import app_settings
+    settings = app_settings.apply()   # same Master Settings as the app
+    if settings["model_paused"]:
+        print("Machine Model is paused in Master Settings: grading only.")
+
     now = datetime.now(cd.ET)
     today = now.date()
     print(f"MACHINE MODEL check {now:%Y-%m-%d %H:%M} ET")
@@ -46,7 +51,11 @@ def main():
     # costs 3, so only two runs a day score (about 10 AM and 4 PM ET, an hour
     # later in daylight time) plus any run started by hand. The rest only grade.
     manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or "--force-top3" in sys.argv
-    scoring = manual or now.hour in SCORE_HOURS
+    # Also score if the Top 3 is due but not locked yet (e.g. the lock hour was
+    # moved in Master Settings): a free Supabase check decides.
+    lock_pending = (not settings["model_paused"] and cbb_board.top3_due(today)
+                    and not cbb_board.has_top3(today))
+    scoring = not settings["model_paused"] and (manual or now.hour in SCORE_HOURS or lock_pending)
     if not scoring:
         print("Grading-only run (games are scored around 10 AM and 4 PM ET).")
     if scoring and games.empty:
@@ -62,7 +71,7 @@ def main():
         events, _ = cd.fetch_events([today])
         day_games = cd.parse_events(events)
         results = cv.evaluate_day(day_games, games, tv, ratings, model) if not day_games.empty else []
-        plays = [r for r in results if cv.is_play(r["pick"], True, cv.RULES["play_at"])]
+        plays = [r for r in results if cv.is_play(r["pick"], cv.REQUIRE_CORE, cv.RULES["play_at"])]
         print(f"{len(day_games)} games today, {len(results)} upcoming with moneylines, {len(plays)} qualify")
         for r in plays:
             g, p = r["game"], r["pick"]

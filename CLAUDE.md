@@ -44,7 +44,8 @@ and never hard-code a fallback key.
 | `matchup_trends.py` | Game/matchup ATS trends from the Supabase `games` table |
 | `bet_store.py` | SQLite ledger (`bets.db`) for guest bets |
 | `user_data.py` | Routes bet reads/writes: signed in → Supabase, guest → SQLite |
-| `auth_store.py`, `auth_ui.py` | Optional Supabase sign-in, cookie-backed sessions |
+| `auth_store.py`, `auth_ui.py` | Optional Supabase sign-in, cookie-backed sessions. One Supabase client per browser session (never shared); refresh tokens rotate, so every refresh writes the new one back to the cookie. `is_admin()` = row in `admin_users` |
+| `app_settings.py` | Admin Master Settings (Profile → ⚙️ Master Settings): checklist thresholds, Top 3 lock time/size, lookahead, pause. Stored in Supabase `app_settings` (db/admin_settings.sql); `apply()` pushes them onto the model for the app and the daily job |
 | `bet_settlement.py` | Settles open bets from The Odds API `/scores` |
 | `bet_slips.py` | Groups repeat bets into slips; the My Bets tab |
 | `bet_analytics.py` | Bet history and trend charts on the Profile tab |
