@@ -265,6 +265,16 @@ def _bet_keys():
     moneyline bets, for the 'You bet it' marker."""
     if not auth_store.signed_in():
         return set()
+    cached = st.session_state.get("_bet_keys_cache")
+    uid = auth_store.current_user_id()
+    if cached and cached[0] == uid and datetime.now().timestamp() - cached[1] < 600:
+        return cached[2]
+    keys = _load_bet_keys()
+    st.session_state["_bet_keys_cache"] = (uid, datetime.now().timestamp(), keys)
+    return keys
+
+
+def _load_bet_keys():
     try:
         import real_bets
         legs = real_bets.load_from_account()
