@@ -29,6 +29,7 @@ DEFAULTS = {
     "top3_lock_hour": 10,      # ET
     "top_n": 3,                # picks per day (the table allows up to 3)
     "lookahead_days": 1,       # admin lookahead
+    "dog_split": True,         # underdogs: break-even split between moneyline and spread
 }
 
 
@@ -83,6 +84,7 @@ def apply(settings=None, updated_at=None):
     cbb_board.TOP3_LOCK_HOUR = settings["top3_lock_hour"]
     cbb_board.TOP_N = max(1, min(3, settings["top_n"]))
     cbb_board.PAUSED = settings["model_paused"]
+    cbb_board.DOG_SPLIT = settings["dog_split"]
     cbb_board.RULES_VERSION = "v1" if not updated_at else f"v1-{str(updated_at)[:16]}"
     return settings
 
@@ -145,6 +147,11 @@ def render_admin_settings():
         reb = c[3].number_input("Rebound edge", 0.0, 20.0, float(settings["reb_edge"]), step=0.5)
         to = c[4].number_input("Turnover edge", 0.0, 20.0, float(settings["to_edge"]), step=0.5)
 
+        st.markdown("**How underdogs are bet**")
+        dog_split = st.toggle("Split underdogs between moneyline and spread (break-even if they lose but cover)",
+                              value=settings["dog_split"],
+                              help="Off: every pick is 1 unit on the moneyline. Applies to picks made after you save.")
+
         st.markdown("**MACHINE Top 3**")
         c = st.columns(2)
         lock = c[0].selectbox("Lock time", list(range(8, 17)),
@@ -163,7 +170,7 @@ def render_admin_settings():
                "min_value_pts": min_value, "fav_lane_lo": fav_lo, "fav_lane_hi": fav_hi,
                "dog_lane_lo": dog_lo, "dog_lane_hi": dog_hi, "rest_edge_days": rest,
                "ft_edge": ft_edge, "ft_min_pct": ft_min, "reb_edge": reb, "to_edge": to,
-               "top3_lock_hour": lock, "top_n": top_n, "lookahead_days": look}
+               "top3_lock_hour": lock, "top_n": top_n, "lookahead_days": look, "dog_split": dog_split}
         if fav_lo > fav_hi or dog_lo > dog_hi:
             st.error("Each lane's 'from' must be the longer price: e.g. favourites -300 to -150, dogs +150 to +300.")
         else:

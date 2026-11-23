@@ -75,7 +75,8 @@ def main():
         print(f"{len(day_games)} games today, {len(results)} upcoming with moneylines, {len(plays)} qualify")
         for r in plays:
             g, p = r["game"], r["pick"]
-            print(f"  PLAY {g[p['side']]} {p['ml']:+d}  value {p['value']:+.1f}  checks {p['passed']}/{p['scored']}")
+            print(f"  PLAY {g[p['side']]} {p['ml']:+d}  value {p['value']:+.1f}  checks {p['passed']}/{p['scored']}"
+                  f"  | bet: {cv._bet_text(p)}")
         n, err = cbb_board.log_plays(plays, throttle=False)
         if err:
             problems.append(err)
@@ -93,6 +94,9 @@ def main():
 
     graded = cbb_board.grade_all()
     print(f"Graded: {graded}")
+    if cbb_board.SPLIT_SQL_MISSING["flag"]:
+        problems.append("Split-bet columns are missing: run db/split_bets.sql in Supabase "
+                        "(picks were saved as plain moneyline bets)")
     for p in problems:
         print(f"PROBLEM: {p}")
     return 1 if problems else 0

@@ -28,6 +28,8 @@ TOP3_LOCK_HOUR = 10    # ET: the day's Top 3 is chosen at the first check after 
 TOP_N = 3
 TABLES = ("model_plays", "machine_top3")
 PAUSED = False         # Master Settings: stop logging plays / locking the Top 3
+DOG_SPLIT = True       # Master Settings: underdogs split ML + spread at the break-even ratio
+SPLIT_COLUMNS = ("spread_line", "spread_odds", "ml_stake", "spread_stake")   # db/split_bets.sql
 
 
 # ---- Storage ---------------------------------------------------------------
@@ -57,6 +59,31 @@ def _missing_table(exc, table):
     return table in msg and ("does not exist" in msg or "schema cache" in msg)
 
 
+def _payout(odds):
+    """Profit per 1 unit staked at American odds."""
+    return odds / 100 if odds > 0 else 100 / abs(odds)
+
+
+def bet_plan(ml, spread=None, spread_odds=None, stake=1.0, split=None):
+    """How a pick's 1-unit stake is bet.
+
+    Favourites: all of it on the moneyline.
+    Underdogs (when DOG_SPLIT is on and a spread is posted): split between the
+    moneyline (x) and the spread (y) so that losing outright but covering
+    breaks exactly even:  y * b = x  and  x + y = stake,  where b is the spread
+    payout per unit. So  y = stake / (1 + b)  and  x = stake * b / (1 + b).
+    Winning outright pays x * (1 + moneyline payout); failing to cover loses the
+    full stake.
+    """
+    split = DOG_SPLIT if split is None else split
+    if ml < 0 or not split or spread is None or spread_odds is None:
+        return {"ml_stake": stake, "spread_stake": 0.0, "spread_line": None, "spread_odds": None}
+    b = _payout(spread_odds)
+    y = round(stake / (1 + b), 3)
+    return {"ml_stake": round(stake - y, 3), "spread_stake": y,
+            "spread_line": float(spread), "spread_odds": int(spread_odds)}
+
+
 def play_row(r):
     g, p = r["game"], r["pick"]
     tip = g["date"]
@@ -73,7 +100,26 @@ def play_row(r):
         "checks_passed": int(p["passed"]), "checks_scored": int(p["scored"]),
         "checks": json.loads(json.dumps(p["checks"], default=str)),
         "rules_version": RULES_VERSION,
+        **bet_plan(int(p["ml"]), p.get("spread"), p.get("spread_odds")),
     }
+
+
+SPLIT_SQL_MISSING = {"flag": False}   # set when the split-bet columns aren't in the database yet
+
+
+def _upsert(c, table, rows):
+    """Insert without overwriting. If db/split_bets.sql hasn't been run, the
+    split-bet columns don't exist yet: save the pick without them (so it's
+    tracked as a plain moneyline bet) rather than losing it."""
+    try:
+        c.table(table).upsert(rows, on_conflict="id", ignore_duplicates=True, returning="minimal").execute()
+    except Exception as e:
+        msg = str(e)
+        if not any(col in msg for col in SPLIT_COLUMNS):
+            raise
+        SPLIT_SQL_MISSING["flag"] = True
+        slim = [{k: v for k, v in r.items() if k not in SPLIT_COLUMNS} for r in rows]
+        c.table(table).upsert(slim, on_conflict="id", ignore_duplicates=True, returning="minimal").execute()
 
 
 def log_plays(plays, throttle=True):
@@ -90,8 +136,7 @@ def log_plays(plays, throttle=True):
     if not rows:
         return 0, None
     try:
-        c.table("model_plays").upsert(rows, on_conflict="id", ignore_duplicates=True,
-                                      returning="minimal").execute()
+        _upsert(c, "model_plays", rows)
     except Exception as e:
         return 0, ("The `model_plays` table isn't set up yet. Run db/model_plays.sql in Supabase."
                    if _missing_table(e, "model_plays") else f"Couldn't log plays: {str(e)[:160]}")
@@ -158,8 +203,7 @@ def select_top3(results, day, force=False):
         row.update({"id": f"{day.isoformat()}-{rank}", "rank": rank, "game_date": day.isoformat()})
         rows.append(row)
     try:
-        c.table("machine_top3").upsert(rows, on_conflict="id", ignore_duplicates=True,
-                                       returning="minimal").execute()
+        _upsert(c, "machine_top3", rows)
     except Exception as e:
         return 0, f"Couldn't save Top 3: {str(e)[:160]}"
     _mark(flag)
@@ -251,12 +295,50 @@ def grade_all():
 
 
 def units(ml, status):
-    """Profit for a flat 1-unit stake."""
+    """Profit for a flat 1-unit moneyline stake."""
     if status == "won":
         return ml / 100 if ml > 0 else 100 / abs(ml)
     if status == "lost":
         return -1.0
     return 0.0
+
+
+def _val(r, k):
+    v = r.get(k)
+    return None if v is None or (isinstance(v, float) and pd.isna(v)) else v
+
+
+def _margin(r):
+    """The pick side's final margin, or None until graded."""
+    if _val(r, "home_score") is None or _val(r, "away_score") is None:
+        return None
+    m = float(r["home_score"]) - float(r["away_score"])
+    return m if r["side"] == "home" else -m
+
+
+def pick_units(r):
+    """Profit on a graded pick. Split picks add their moneyline and spread legs;
+    picks without a split (favourites, older rows) are plain 1-unit moneylines."""
+    status = r["status"]
+    if status in ("pending", "void"):
+        return 0.0
+    ml_stake, sp_stake = _val(r, "ml_stake"), _val(r, "spread_stake")
+    if not sp_stake or _val(r, "spread_line") is None or _val(r, "spread_odds") is None:
+        return units(int(r["ml"]), status) * (float(ml_stake) if ml_stake else 1.0)
+    margin = _margin(r)
+    if margin is None:
+        return 0.0
+    ml_leg = float(ml_stake) * _payout(int(r["ml"])) if status == "won" else (
+        -float(ml_stake) if status == "lost" else 0.0)
+    cover = margin + float(r["spread_line"])
+    sp_leg = (float(sp_stake) * _payout(int(r["spread_odds"])) if cover > 0
+              else -float(sp_stake) if cover < 0 else 0.0)
+    total = round(ml_leg + sp_leg, 3)
+    return 0.0 if abs(total) < 0.005 else total   # stakes are rounded to 0.001u
+
+
+def is_split(r):
+    return bool(_val(r, "spread_stake")) and _val(r, "spread_line") is not None
 
 
 # ---- Real bets cross-check -------------------------------------------------
@@ -294,10 +376,12 @@ ICON = {"won": "✅ Won", "lost": "❌ Lost", "push": "➖ Push", "void": "Void"
 
 def _record(df):
     df = df.copy()
-    df["units"] = [units(m, s) for m, s in zip(df["ml"], df["status"])]
+    df["units"] = [pick_units(r) for r in df.to_dict("records")]
     done = df[df["status"].isin(["won", "lost", "push"])]
-    w, l, p = ((done["status"] == x).sum() for x in ("won", "lost", "push"))
-    risked = int((done["status"] != "push").sum())
+    # Graded by money result: an underdog split that loses but covers breaks
+    # even, so it's a push in the record, not a loss.
+    w, l, p = int((done["units"] > 0).sum()), int((done["units"] < 0).sum()), int((done["units"] == 0).sum())
+    risked = len(done)
     u = float(done["units"].sum())
     return df, {"w": int(w), "l": int(l), "p": int(p), "units": u,
                 "roi": u / risked * 100 if risked else 0.0,
@@ -407,21 +491,56 @@ def recap_sentence(r):
     role = "favourite" if ml < 0 else "underdog"
     wp = ("" if r.get("model_wp") is None or pd.isna(r.get("model_wp"))
           else f" (the model gave them {float(r['model_wp']) * 100:.0f}%)")
+    u = pick_units(r)
+    if is_split(r):
+        line = f"{float(r['spread_line']):+g}"
+        if status == "won":
+            return (f"{r['team']} beat {opp} {mine}-{theirs} outright as a {fmt_odds(ml)} underdog{wp}, "
+                    f"so both the moneyline and the {line} spread won: {u:+.2f} units.")
+        cover = (mine - theirs) + float(r["spread_line"])
+        if cover > 0:
+            return (f"{r['team']} lost {mine}-{theirs} to {opp} but covered {line}, so the spread "
+                    f"paid for the moneyline and the split "
+                    + ("broke even (0.00 units)." if u == 0 else f"finished {u:+.2f} units."))
+        if cover == 0:
+            return (f"{r['team']} lost {mine}-{theirs} to {opp}, a push on {line}, so only the "
+                    f"moneyline part lost: {u:+.2f} units.")
+        return (f"{r['team']} lost {mine}-{theirs} to {opp} and didn't cover {line}, so both "
+                f"legs lost: {u:+.2f} units.")
     if status == "won":
         return (f"{r['team']} beat {opp} {mine}-{theirs} as a {fmt_odds(ml)} {role}{wp}, "
-                f"so the 1-unit play won {_to_win(ml):+.2f} units.")
+                f"so the 1-unit play won {u:+.2f} units.")
     if status == "lost":
         return (f"{r['team']} lost {mine}-{theirs} to {opp} as a {fmt_odds(ml)} {role}{wp}, "
-                f"so the 1-unit play lost 1.00 unit.")
+                f"so the 1-unit play lost {abs(u):.2f} unit.")
     return f"{r['team']} and {opp} finished level {mine}-{theirs}, so the play pushed and no units moved."
+
+
+def bet_line(r):
+    """Plain-English bet for a pick: what to stake where, and what each result pays."""
+    ml = int(r["ml"])
+    if not is_split(r):
+        return f"1 unit on the {fmt_odds(ml)} moneyline (wins {_payout(ml):.2f}u)."
+    x, y = float(r["ml_stake"]), float(r["spread_stake"])
+    line, so = float(r["spread_line"]), int(r["spread_odds"])
+    win = x * _payout(ml) + y * _payout(so)
+    x2 = round(x, 2)    # shown so the two parts add up to exactly 1.00u
+    return (f"{x2:.2f}u on the {fmt_odds(ml)} moneyline + {1 - x2:.2f}u on {line:+g} ({fmt_odds(so)}). "
+            f"Wins outright: {win:+.2f}u · loses but covers: break-even · doesn't cover: −1.00u.")
 
 
 def _card_label(r, bet, with_rank):
     icon = {"won": "✅", "lost": "❌", "push": "➖", "void": "⚪", "pending": "⏳"}.get(r["status"], "")
+    if r["status"] in ("won", "lost", "push"):
+        icon = "✅" if r["units"] > 0 else "❌" if r["units"] < 0 else "➖"
     rank = f"#{int(r['rank'])} " if with_rank and r.get("rank") is not None else ""
     ml = int(r["ml"])
     if r["status"] == "pending":
-        money = f"1u to win {_to_win(ml):.2f}u"
+        if is_split(r):
+            win = float(r["ml_stake"]) * _payout(ml) + float(r["spread_stake"]) * _payout(int(r["spread_odds"]))
+            money = f"split ML + {float(r['spread_line']):+g} · wins {win:.2f}u"
+        else:
+            money = f"1u to win {_to_win(ml):.2f}u"
     else:
         money = f"{r['units']:+.2f}u"
     you = " 💵" if bet and (r["game_date"], str(r["team"]).lower()) in bet else ""
@@ -440,8 +559,8 @@ def render_pick_cards(df, bet, with_rank=False, limit=None):
                 st.markdown(f"**Recap:** {recap}")
             matchup = f"{r['away']} {'vs' if r.get('neutral') else '@'} {r['home']}"
             tip = r["tip_time"].tz_convert(cd.ET).strftime("%-I:%M %p ET") if pd.notna(r.get("tip_time")) else ""
-            st.caption(f"{matchup} · {tip} · Stake 1 unit at {fmt_odds(int(r['ml']))} · "
-                       f"{r['checks_passed']}/{r['checks_scored']} checks")
+            st.caption(f"{matchup} · {tip} · {r['checks_passed']}/{r['checks_scored']} checks")
+            st.markdown(f"**The bet:** {bet_line(r)}")
             checks = _checks(r)
             if checks:
                 st.caption("  ".join(
@@ -498,6 +617,9 @@ def render_board():
     if PAUSED:
         st.warning("The Machine Model is paused by the admin: no new plays or Top 3 picks are being "
                    "made. Existing picks are still graded.")
+    if SPLIT_SQL_MISSING["flag"]:
+        st.warning("Underdog split bets aren't being saved yet, so picks are recorded as plain moneyline "
+                   "bets. Run `db/split_bets.sql` in the Supabase SQL editor.")
 
     st.markdown("### 🎯 MACHINE Top 3")
     st.caption(f"Every day at {TOP3_LOCK_HOUR} AM ET the MACHINE MODEL locks in its 3 best-edge "
@@ -523,9 +645,11 @@ def render_board():
                 show_all = len(earlier) > 15 and st.checkbox(
                     f"Show all {len(earlier)} previous picks", key="top3_all")
                 render_pick_cards(earlier, bet, with_rank=True, limit=None if show_all else 15)
-            by_day = top.groupby("game_date").agg(
-                Picks=("id", "count"), Won=("status", lambda s: (s == "won").sum()),
-                Lost=("status", lambda s: (s == "lost").sum()), Units=("units", "sum"))
+            graded = top[top["status"].isin(["won", "lost", "push"])]
+            by_day = graded.groupby("game_date").agg(
+                Picks=("id", "count"), Won=("units", lambda u: (u > 0).sum()),
+                Lost=("units", lambda u: (u < 0).sum()), Even=("units", lambda u: (u == 0).sum()),
+                Units=("units", "sum"))
             by_day = by_day.sort_index()
             by_day["Running units"] = by_day["Units"].cumsum().round(2)
             by_day["Units"] = by_day["Units"].round(2)

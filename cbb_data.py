@@ -124,6 +124,18 @@ def _ml(odds, side):
     return _num((odds.get(f"{side}TeamOdds") or {}).get("moneyLine"))
 
 
+def _spread_close(odds, side):
+    """(line, price) for 'home'/'away' from ESPN's pointSpread block: closing
+    (current) line first, then opening. (None, None) if not posted."""
+    ps = (odds.get("pointSpread") or {}).get(side) or {}
+    for key in ("close", "open"):
+        leg = ps.get(key) or {}
+        line, price = _num(str(leg.get("line", "")).replace("+", "")), _num(str(leg.get("odds", "")).replace("+", ""))
+        if line is not None and price is not None:
+            return line, price
+    return None, None
+
+
 def parse_events(events):
     rows = []
     for ev in events or []:
@@ -157,6 +169,11 @@ def parse_events(events):
             "total_line": _num(odds.get("overUnder")),
             "home_ml": _ml(odds, "home") if odds else None,
             "away_ml": _ml(odds, "away") if odds else None,
+            # Each side's own spread line and price (DraftKings via ESPN)
+            "home_spread_line": _spread_close(odds, "home")[0] if odds else None,
+            "home_spread_odds": _spread_close(odds, "home")[1] if odds else None,
+            "away_spread_line": _spread_close(odds, "away")[0] if odds else None,
+            "away_spread_odds": _spread_close(odds, "away")[1] if odds else None,
             "line_source": odds.get("provider", {}).get("name") if odds else None,
             "notes": notes,
             "tournament": "Men's Basketball Championship" in notes,

@@ -426,8 +426,13 @@ def score_side(side, g, tv_rows, tv_proj, machine_wp, ctx, tv, game_day):
 
     passed = sum(1 for c in checks if c["passed"] is True)
     scored = sum(1 for c in checks if c["passed"] is not None)
+    sp_line, sp_odds = g.get(f"{side}_spread_line"), g.get(f"{side}_spread_odds")
+    if sp_line is None or pd.isna(sp_line) or sp_odds is None or pd.isna(sp_odds):
+        sp_line = sp_odds = None
     return {"side": side, "ml": ml, "wp": wp, "value": value, "checks": checks,
-            "passed": passed, "scored": scored, "in_lane": in_lane}
+            "passed": passed, "scored": scored, "in_lane": in_lane,
+            "spread": None if sp_line is None else float(sp_line),
+            "spread_odds": None if sp_odds is None else int(sp_odds)}
 
 
 def evaluate_day(day_games, season_games, tv, ratings, model):
@@ -449,6 +454,15 @@ def evaluate_day(day_games, season_games, tv, ratings, model):
         best = max(sides, key=lambda r: (r["passed"], r["value"] if r["value"] is not None else -99))
         out.append({"game": g, "pick": best, "proj": proj, "matched": all(v is not None for v in rows.values())})
     return out
+
+
+def _bet_text(p):
+    plan = cbb_board.bet_plan(int(p["ml"]), p.get("spread"), p.get("spread_odds"))
+    if not plan["spread_stake"]:
+        return f"1u ML {fmt_odds(int(p['ml']))}"
+    x2 = round(plan["ml_stake"], 2)    # the two parts always show as 1.00u
+    return (f"{x2:.2f}u ML {fmt_odds(int(p['ml']))} + "
+            f"{1 - x2:.2f}u {plan['spread_line']:+g} ({fmt_odds(plan['spread_odds'])})")
 
 
 def is_play(pick, require_core, need=None):
@@ -516,6 +530,7 @@ def render_value(season_games, ratings, model):
             "Fair": "" if p["wp"] is None else fmt_odds(implied_prob_to_american(p["wp"])),
             "Value (pts)": None if p["value"] is None else round(p["value"], 1),
             "Checks": f"{p['passed']}/{p['scored']}",
+            "Bet": _bet_text(p),
             "Flags": "Neutral site" if g["neutral"] else "",
         })
     df = pd.DataFrame(rows)
@@ -575,6 +590,14 @@ def render_checklist(need=None):
                 "the price lane and model value.** Neutral sites are flagged for a closer look but "
                 "not scored. Stats: CollegeBasketballData.com (Bart Torvik as backup). "
                 "Lines: DraftKings via ESPN.")
+    if cbb_board.DOG_SPLIT:
+        st.markdown(
+            "**How each pick is bet (1 unit):** favourites go all on the moneyline. Underdogs split the unit "
+            "between the moneyline and the spread so that **losing outright but covering breaks even**: "
+            "spread stake = 1 ÷ (1 + b) and moneyline stake = b ÷ (1 + b), where *b* is what the spread pays "
+            "per unit (0.909 at −110). An outright win pays on both; failing to cover loses the unit.")
+    else:
+        st.markdown("**How each pick is bet:** 1 unit on the moneyline.")
 
 
 def lookahead(season_games, ratings, model, days=None):
