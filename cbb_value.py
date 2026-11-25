@@ -27,6 +27,7 @@ import streamlit as st
 import auth_store
 import cbb_board
 import cbb_data as cd
+import cbb_matchups
 from bet_slips import american_to_implied_prob, fmt_odds, implied_prob_to_american
 
 TORVIK = "https://barttorvik.com"
@@ -174,11 +175,28 @@ def _cbbd_key():
         return None
 
 
-def _cbbd_get(path, key):
-    resp = requests.get(f"{CBBD}/{path}", headers={"Authorization": f"Bearer {key}"}, timeout=40)
-    if resp.status_code != 200:
-        raise ValueError(f"CollegeBasketballData {path}: HTTP {resp.status_code} {resp.text[:120]!r}")
-    return resp.json()
+def _cbbd_get(path, key, attempts=3):
+    """GET with retries: a single slow or failed response (it timed out once
+    and failed a whole daily run) shouldn't cost the day's picks. Retries only
+    on timeouts, connection errors and 5xx; a 4xx (bad key, bad request) fails
+    at once. Each retry is a call against the monthly allowance, but only
+    happens when the previous one failed."""
+    import time
+    last = None
+    for i in range(attempts):
+        try:
+            resp = requests.get(f"{CBBD}/{path}", headers={"Authorization": f"Bearer {key}"}, timeout=40)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last = f"CollegeBasketballData {path}: {type(e).__name__}"
+        else:
+            if resp.status_code == 200:
+                return resp.json()
+            last = f"CollegeBasketballData {path}: HTTP {resp.status_code} {resp.text[:120]!r}"
+            if resp.status_code < 500:
+                break
+        if i < attempts - 1:
+            time.sleep(5 * (i + 1))
+    raise ValueError(last)
 
 
 @st.cache_data(ttl=7 * 24 * 3600, show_spinner=False)
@@ -539,6 +557,12 @@ def render_value(season_games, ratings, model):
     st.dataframe(df, hide_index=True, width="stretch")
 
     st.markdown("#### Checklist by game")
+    show_ctx = st.toggle("Add recent matchups for plays (last 3 games vs the line, common opponents)",
+                         value=False, key="cbbv_matchups",
+                         help="Context only: it doesn't change which games qualify. Loads extra ESPN data, so it's slower.")
+    if show_ctx:
+        with st.spinner("Loading recent matchups…"):
+            cbb_matchups.prefetch([r["game"] for r in results if is_play(r["pick"], require_core, need)], season_games)
     for r in results:
         g, p = r["game"], r["pick"]
         if only and not is_play(p, require_core, need):
@@ -553,6 +577,8 @@ def render_value(season_games, ratings, model):
             for ch in p["checks"]:
                 icon = "✅" if ch["passed"] is True else "❌" if ch["passed"] is False else "➖"
                 st.markdown(f"{icon} **{ch['name']}**: {ch['detail']}")
+            if show_ctx and is_play(p, require_core, need):
+                cbb_matchups.render(g, p["side"], season_games, p.get("spread"), int(p["ml"]))
 
     with st.expander("The MACHINE MODEL checklist"):
         render_checklist(need)
