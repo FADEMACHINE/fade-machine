@@ -28,6 +28,7 @@ SCOREBOARD = ("https://site.api.espn.com/apis/site/v2/sports/basketball/"
 MARGIN_SD = 11.0      # spread of real CBB results around a projection, in points
 RIDGE = 4.0           # shrinkage toward average; worth ~4 games of evidence
 MIN_GAMES = 5         # below this a team's numbers are flagged as thin
+HOME_COURT = 3.0      # points; standard college home-court edge, held fixed (see fit_ratings)
 
 
 # ---- Season calendar -------------------------------------------------------
@@ -136,6 +137,44 @@ def _spread_close(odds, side):
     return None, None
 
 
+def _odds_side_check(odds, home_abbr, away_abbr):
+    """True if ESPN's home/away prices are attached to the wrong teams.
+
+    At neutral sites ESPN sometimes swaps which team it calls home during the
+    day but leaves the odds block where it was, so the 'home' price belongs to
+    the other team. The summary line ("LSU -4.5") names the favourite by
+    abbreviation and can't drift, so it's the referee: if it says one team is
+    favoured but the moneylines say the other, the prices are flipped."""
+    details = (odds.get("details") or "").strip()
+    parts = details.rsplit(" ", 1)
+    if len(parts) != 2 or _num(parts[1]) is None or _num(parts[1]) == 0:
+        return False
+    fav = parts[0].strip().upper()
+    hml, aml = _ml(odds, "home"), _ml(odds, "away")
+    if hml is None or aml is None or hml == aml:
+        return False
+    ml_fav_home = hml < aml
+    if fav == (home_abbr or "").upper():
+        return not ml_fav_home
+    if fav == (away_abbr or "").upper():
+        return ml_fav_home
+    return False
+
+
+def _side_prices(odds, home_abbr, away_abbr):
+    if not odds:
+        return {k: None for k in ("home_ml", "away_ml", "home_spread_line", "home_spread_odds",
+                                  "away_spread_line", "away_spread_odds")}
+    flip = _odds_side_check(odds, home_abbr, away_abbr)
+    h, a = ("away", "home") if flip else ("home", "away")
+    return {
+        "home_ml": _ml(odds, h), "away_ml": _ml(odds, a),
+        "home_spread_line": _spread_close(odds, h)[0], "home_spread_odds": _spread_close(odds, h)[1],
+        "away_spread_line": _spread_close(odds, a)[0], "away_spread_odds": _spread_close(odds, a)[1],
+        "odds_flipped": flip,
+    }
+
+
 def parse_events(events):
     rows = []
     for ev in events or []:
@@ -167,13 +206,9 @@ def parse_events(events):
             "conf_game": bool(comp.get("conferenceCompetition")),
             "home_spread": _home_spread(odds, ht.get("abbreviation"), at.get("abbreviation")) if odds else None,
             "total_line": _num(odds.get("overUnder")),
-            "home_ml": _ml(odds, "home") if odds else None,
-            "away_ml": _ml(odds, "away") if odds else None,
-            # Each side's own spread line and price (DraftKings via ESPN)
-            "home_spread_line": _spread_close(odds, "home")[0] if odds else None,
-            "home_spread_odds": _spread_close(odds, "home")[1] if odds else None,
-            "away_spread_line": _spread_close(odds, "away")[0] if odds else None,
-            "away_spread_odds": _spread_close(odds, "away")[1] if odds else None,
+            # Each side's moneyline, spread line and price (DraftKings via ESPN),
+            # swapped back when ESPN has left them on the wrong teams.
+            **_side_prices(odds, ht.get("abbreviation"), at.get("abbreviation")),
             "line_source": odds.get("provider", {}).get("name") if odds else None,
             "notes": notes,
             "tournament": "Men's Basketball Championship" in notes,
@@ -243,8 +278,13 @@ def fit_ratings(games):
     np.add.at(xty, def_i, -yc)
     xty[p - 1] = float((s * yc).sum())
 
-    reg = np.full(p, RIDGE); reg[-1] = 0.01
-    beta = np.linalg.solve(xtx + np.diag(reg), xty)
+    # Home court is pinned at HOME_COURT points. Fitted freely it came out near
+    # 17-18 points early in the season: good teams mostly host very weak ones
+    # (often non-D1), and the fit credited "beat a bad team at home" to home
+    # court. A very stiff prior holds it at the standard value instead.
+    reg = np.full(p, RIDGE); reg[-1] = 1e6
+    prior = np.zeros(p); prior[-1] = HOME_COURT
+    beta = np.linalg.solve(xtx + np.diag(reg), xty + reg * prior)
     off, dfn, hca = beta[:n], beta[n:2 * n], beta[-1]
 
     names = dict(zip(done["home_id"], done["home"])) | dict(zip(done["away_id"], done["away"]))

@@ -22,7 +22,7 @@ import cbb_data as cd  # noqa: E402
 import cbb_value as cv  # noqa: E402
 
 
-SCORE_HOURS = {10, 11, 16, 17}   # ET hours of the two scoring runs (winter / daylight time)
+SCORE_HOURS = {16, 17}   # ET hour of the afternoon rescan (winter / daylight time)
 
 
 def main():
@@ -48,8 +48,10 @@ def main():
     games, failed = cd.load_season(season)
     problems = []
     # CollegeBasketballData's free key allows 1,000 calls a month and scoring
-    # costs 3, so only two runs a day score (about 10 AM and 4 PM ET, an hour
-    # later in daylight time) plus any run started by hand. The rest only grade.
+    # costs 3. Runs score only when there's a reason to: the day's Top 3 is due
+    # but not locked yet (the morning runs, every 20 minutes, until one gets
+    # through), the afternoon rescan for late lines (about 4 PM ET), or a run
+    # started by hand. Every other run only grades results, which uses ESPN.
     manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or "--force-top3" in sys.argv
     # Also score if the Top 3 is due but not locked yet (e.g. the lock hour was
     # moved in Master Settings): a free Supabase check decides.
